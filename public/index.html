@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRádio Paróquia Nossa Senhora Auxiliadora</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.2em;
+            font-weight: 700;
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .player-section {
+            padding: 40px 30px;
+            text-align: center;
+            background: #f8f9fa;
+        }
+
+        audio {
+            width: 100%;
+            max-width: 600px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+
+        #status {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            font-weight: bold;
+            color: #155724;
+            font-size: 1.1em;
+        }
+
+        #ouvintes {
+            background: #d1ecf1;
+            border-left: 5px solid #17a2b8;
+            padding: 15px;
+            border-radius: 8px;
+            color: #0c5460;
+            font-weight: bold;
+            font-size: 1em;
+        }
+
+        .buttons {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            background: white;
+        }
+
+        button {
+            padding: 18px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #2980b9, #21618c);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        button:active {
+            transform: translateY(-1px);
+        }
+
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 25px;
+            font-size: 0.95em;
+        }
+
+        footer p {
+            margin: 0;
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 1.6em;
+            }
+            .buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🎙️ WebRádio Paróquia Nossa Senhora Auxiliadora</h1>
+        <p>Iraí - RS | Evangelização 24 Horas</p>
+    </div>
+
+    <div class="player-section">
+        <audio id="player" controls autoplay></audio>
+        <div id="status">⏳ Carregando programação...</div>
+        <div id="ouvintes">👥 Ouvintes: 0</div>
+    </div>
+
+    <div class="buttons">
+        <button onclick="testar('maraba')">📻 Testar Rádio Marabá</button>
+        <button onclick="testar('vozimaculado')">🎵 Testar Voz do Coração</button>
+        <button onclick="testar('classica')">🎼 Testar Música Clássica</button>
+        <button onclick="testarMensagem()">🔊 Testar Mensagem (60s)</button>
+    </div>
+
+    <footer>
+        <p>🙏 WebRádio Paróquia Nossa Senhora Auxiliadora - Iraí, RS</p>
+        <p style="margin-top: 8px; opacity: 0.8;">Evangelização e Formação Católica</p>
+    </footer>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const player = document.getElementById('player');
+const status = document.getElementById('status');
+const ouvintes = document.getElementById('ouvintes');
+
+// Recebe comando para tocar stream
+socket.on('play-stream', data => {
+    let url = data.url;
+
+    // Usa proxy para evitar mixed-content
+    if (data.url.includes('r13.ciclano')) url = '/proxy-stream/vozimaculado';
+    if (data.url.includes('speedrs'))    url = '/proxy-stream/maraba';
+    if (data.url.includes('srgssr'))     url = '/proxy-stream/classica';
+
+    player.src = url;
+    player.play().catch(e => console.log('Erro ao tocar:', e));
+    status.textContent = '▶️ ' + data.descricao;
+});
+
+// Recebe comando para tocar mensagem
+socket.on('play-mensagem', data => {
+    const streamAtual = player.src;  // Guarda o stream atual
+
+    player.src = data.arquivo;       // Troca para a mensagem
+    player.play().catch(e => console.log('Erro ao tocar mensagem:', e));
+    status.textContent = '🎙️ Mensagem do Cônego Rafael';
+
+    console.log('📥 Carregando mensagem:', data.arquivo);
+
+    // Volta ao stream depois de 60 segundos
+    setTimeout(() => {
+        player.src = streamAtual;
+        player.play().catch(e => console.log('Erro ao retomar:', e));
+        status.textContent = '▶️ Retornando à programação...';
+    }, data.duracao * 1000);
+});
+
+// Atualiza contador de ouvintes
+socket.on('ouvintes', data => {
+    ouvintes.textContent = '👥 Ouvintes: ' + data.total;
+});
+
+// Aviso (caso não tenha mensagens cadastradas)
+socket.on('aviso', data => {
+    alert(data.texto);
+});
+
+// Botões de teste
+function testar(tipo) {
+    fetch('/teste-stream/' + tipo);
+}
+
+function testarMensagem() {
+    fetch('/teste-mensagem');
+}
+</script>
+</body>
+</html>
