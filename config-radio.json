@@ -1,0 +1,69 @@
+{
+  "streams": {
+    "vozImaculado": {
+      "url": "http://r13.ciclano.io:9033/live",
+      "nome": "Rádio Voz do Coração Imaculado"
+    },
+    "maraba": {
+      "url": "https://streaming.speedrs.com.br/radio/8010/maraba",
+      "nome": "Rádio Marabá"
+    },
+    "classica": {
+      "url": "https://livestreaming-node-2.srg-ssr.ch/srgssr/rsc_de/mp3/128",
+      "nome": "Música Clássica Erudita"
+    }
+  },
+  "programacao": {
+    "domingo": {
+      "missa": {
+        "inicio": "08:30",
+        "fim": "10:00",
+        "stream": "maraba"
+      }
+    },
+    "sabado": {
+      "vozDoPastor": {
+        "inicio": "12:50",
+        "fim": "13:05",
+        "stream": "maraba"
+      },
+      "missaAoVivo": {
+        "inicio": "19:00",
+        "fim": "20:30",
+        "detectarSilencio": true,
+        "tempoSilencio": 60
+      }
+    }
+  },
+  "mensagens": {
+    "horariosDia": [
+      "10:00",
+      "12:40",
+      "13:52",
+      "14:30",
+      "15:50",
+      "16:20",
+      "17:13",
+      "18:55",
+      "20:00",
+      "23:50"
+    ],
+    "madrugada": {
+      "inicio": "01:00",
+      "fim": "05:00",
+      "intervalo": 30
+    },
+    "googleDriveIds": [
+      "1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu",
+      "1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH",
+      "1nEiDvQ5-8RXWIO8btpqVMvEzJnL7IwpP",
+      "11LSjJO3r_dKMls2YOrxzRvbchoM-Eoz3",
+      "1vxw4yR4NcBfs-DCvktOSzsi7zvhiUkWh",
+      "13LaeViIDUK-IwZCALw-5mV5sHTYoQkiZ",
+      "1gFFmjUUNoqkdIHMGc-cYxP9SX6Zpp8v4",
+      "1N49UV49UgOX8MaYmCO0EJwN2VB1Izp3S",
+      "1f1xLhQWdCdLNCyHHnaHgH6zihHIE4gcv",
+      "118tRazLR0sUIks4E43HH9ggOB_VMC7Pl"
+    ]
+  }
+}

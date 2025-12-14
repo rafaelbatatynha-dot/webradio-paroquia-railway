@@ -3,219 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRádio Paróquia Nossa Senhora Auxiliadora</title>
+    <title>WebRádio Paróquia NSA</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             min-height: 100vh;
             padding: 20px;
         }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 40px 20px;
+        #player {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
             text-align: center;
         }
-
-        .header h1 {
-            margin: 0 0 10px 0;
-            font-size: 2.2em;
-            font-weight: 700;
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
         }
-
-        .header p {
-            margin: 0;
-            font-size: 1.1em;
+        #status {
+            margin: 20px 0;
+            font-size: 18px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 25px 0;
+        }
+        button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        #ouvintes {
+            margin-top: 20px;
+            font-size: 16px;
             opacity: 0.9;
         }
-
-        .player-section {
-            padding: 40px 30px;
-            text-align: center;
-            background: #f8f9fa;
-        }
-
-        audio {
-            width: 100%;
-            max-width: 600px;
-            margin: 20px 0;
-            border-radius: 10px;
-        }
-
-        #status {
-            background: #d4edda;
-            border-left: 5px solid #28a745;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 10px;
-            font-weight: bold;
-            color: #155724;
-            font-size: 1.1em;
-        }
-
-        #ouvintes {
-            background: #d1ecf1;
-            border-left: 5px solid #17a2b8;
-            padding: 15px;
-            border-radius: 8px;
-            color: #0c5460;
-            font-weight: bold;
-            font-size: 1em;
-        }
-
-        .buttons {
-            padding: 30px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 15px;
-            background: white;
-        }
-
-        button {
-            padding: 18px;
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 1em;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
-        }
-
-        button:hover {
-            background: linear-gradient(135deg, #2980b9, #21618c);
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
-        }
-
-        button:active {
-            transform: translateY(-1px);
-        }
-
-        footer {
-            background: #2c3e50;
-            color: white;
-            text-align: center;
-            padding: 25px;
-            font-size: 0.95em;
-        }
-
-        footer p {
-            margin: 0;
-        }
-
-        @media (max-width: 600px) {
-            .header h1 {
-                font-size: 1.6em;
-            }
-            .buttons {
-                grid-template-columns: 1fr;
-            }
+        .info {
+            margin-top: 15px;
+            font-size: 14px;
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        <h1>🎙️ WebRádio Paróquia Nossa Senhora Auxiliadora</h1>
-        <p>Iraí - RS | Evangelização 24 Horas</p>
+    <div id="player">
+        <h1>🎙️ WebRádio Paróquia NSA</h1>
+        <p id="status">Carregando...</p>
+
+        <div class="controls">
+            <button id="playBtn">▶️ Tocar</button>
+            <button id="pauseBtn">⏸️ Pausar</button>
+        </div>
+
+        <p id="ouvintes">Ouvintes: 0</p>
+        <p class="info">🔇 Detecção automática de silêncio ativa</p>
     </div>
 
-    <div class="player-section">
-        <audio id="player" controls autoplay></audio>
-        <div id="status">⏳ Carregando programação...</div>
-        <div id="ouvintes">👥 Ouvintes: 0</div>
-    </div>
+    <audio id="audio" crossorigin="anonymous"></audio>
 
-    <div class="buttons">
-        <button onclick="testar('maraba')">📻 Testar Rádio Marabá</button>
-        <button onclick="testar('vozimaculado')">🎵 Testar Voz do Coração</button>
-        <button onclick="testar('classica')">🎼 Testar Música Clássica</button>
-        <button onclick="testarMensagem()">🔊 Testar Mensagem (60s)</button>
-    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const audio = document.getElementById('audio');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const status = document.getElementById('status');
+        const ouvintes = document.getElementById('ouvintes');
 
-    <footer>
-        <p>🙏 WebRádio Paróquia Nossa Senhora Auxiliadora - Iraí, RS</p>
-        <p style="margin-top: 8px; opacity: 0.8;">Evangelização e Formação Católica</p>
-    </footer>
-</div>
+        let detectarSilencio = false;
+        let audioContext = null;
+        let analyser = null;
+        let silencioInicio = null;
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-const player = document.getElementById('player');
-const status = document.getElementById('status');
-const ouvintes = document.getElementById('ouvintes');
+        // ===== RECEBER STREAM DO SERVIDOR =====
+        socket.on('play-stream', (data) => {
+            audio.src = data.url;
+            audio.play().catch(err => {
+                console.log('Aguardando interação do usuário para tocar');
+            });
+            status.textContent = data.descricao;
+            detectarSilencio = data.detectarSilencio || false;
 
-// Recebe comando para tocar stream
-socket.on('play-stream', data => {
-    let url = data.url;
+            if (detectarSilencio) {
+                console.log('🔇 Detecção de silêncio ATIVADA (60 segundos)');
+                iniciarDeteccaoSilencio();
+            } else {
+                pararDeteccaoSilencio();
+            }
+        });
 
-    // Usa proxy para evitar mixed-content
-    if (data.url.includes('r13.ciclano')) url = '/proxy-stream/vozimaculado';
-    if (data.url.includes('speedrs'))    url = '/proxy-stream/maraba';
-    if (data.url.includes('srgssr'))     url = '/proxy-stream/classica';
+        // ===== RECEBER MENSAGEM DO SERVIDOR =====
+        socket.on('play-mensagem', (data) => {
+            audio.pause();
+            audio.src = data.arquivo;
+            audio.play();
+            status.textContent = '🎙️ Mensagem do Cônego Rafael';
+                console.log('✅ Mensagem terminou');
 
-    player.src = url;
-    player.play().catch(e => console.log('Erro ao tocar:', e));
-    status.textContent = '▶️ ' + data.descricao;
-});
+        // ===== ATUALIZAR NÚMERO DE OUVINTES =====
+        socket.on('ouvintes', (data) => {
+            ouvintes.textContent = `Ouvintes: ${data.total}`;
+        });
+            audio.play().then(() => {
+                if (detectarSilencio && !audioContext) {
+                    iniciarDeteccaoSilencio();
+                }
+            }).catch(err => {
+                console.error('Erro ao tocar:', err);
+            });
+        };
 
-// Recebe comando para tocar mensagem
-socket.on('play-mensagem', data => {
-    const streamAtual = player.src;  // Guarda o stream atual
+        pauseBtn.onclick = () => {
+            audio.pause();
+        };
 
-    player.src = data.arquivo;       // Troca para a mensagem
-    player.play().catch(e => console.log('Erro ao tocar mensagem:', e));
-    status.textContent = '🎙️ Mensagem do Cônego Rafael';
+        // ===== DETECÇÃO DE SILÊNCIO (60 SEGUNDOS) =====
+        function iniciarDeteccaoSilencio() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioContext.createMediaElementSource(audio);
+                    analyser = audioContext.createAnalyser();
+                    source.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    analyser.fftSize = 256;
+                } catch (err) {
+                    console.error('Erro ao criar AudioContext:', err);
+                    return;
+                }
+            }
 
-    console.log('📥 Carregando mensagem:', data.arquivo);
+            monitorarVolume();
+        }
 
-    // Volta ao stream depois de 60 segundos
-    setTimeout(() => {
-        player.src = streamAtual;
-        player.play().catch(e => console.log('Erro ao retomar:', e));
-        status.textContent = '▶️ Retornando à programação...';
-    }, data.duracao * 1000);
-});
+        function monitorarVolume() {
+            if (!detectarSilencio || !analyser) return;
 
-// Atualiza contador de ouvintes
-socket.on('ouvintes', data => {
-    ouvintes.textContent = '👥 Ouvintes: ' + data.total;
-});
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-// Aviso (caso não tenha mensagens cadastradas)
-socket.on('aviso', data => {
-    alert(data.texto);
-});
+            const verificar = () => {
+                if (!detectarSilencio) return;
 
-// Botões de teste
-function testar(tipo) {
-    fetch('/teste-stream/' + tipo);
-}
+                analyser.getByteFrequencyData(dataArray);
+                const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
 
-function testarMensagem() {
-    fetch('/teste-mensagem');
-}
-</script>
+                // Volume abaixo de 5 = silêncio
+                if (volume < 5) {
+                    if (!silencioInicio) {
+                        silencioInicio = Date.now();
+                        console.log('🔇 Silêncio detectado, iniciando contagem...');
+                    } else {
+                        const tempoSilencio = (Date.now() - silencioInicio) / 1000;
+
+                        if (tempoSilencio >= 60) {
+                            console.log('🔇 60 segundos de silêncio — avisando servidor');
+                            socket.emit('silencio-detectado');
+                            pararDeteccaoSilencio();
+                            return;
+                        }
+                    }
+                } else {
+                    // Reset se houver áudio
+                    if (silencioInicio) {
+                        console.log('🔊 Áudio retornou, resetando contador');
+                        silencioInicio = null;
+                    }
+                }
+
+                requestAnimationFrame(verificar);
+            };
+
+            verificar();
+        }
+
+        function pararDeteccaoSilencio() {
+            detectarSilencio = false;
+            silencioInicio = null;
+        }
+    </script>
 </body>
 </html>
+
+        // ===== BOTÕES DE CONTROLE =====
+        playBtn.onclick = () => {
+                socket.emit('mensagem-terminou');
+            };
+        });
+
+            // Avisar servidor quando mensagem terminar
+            audio.onended = () => {
+
