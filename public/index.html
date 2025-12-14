@@ -91,53 +91,47 @@
 
         <p id="ouvintes">Ouvintes: 0</p>
         <p class="info">🔇 Detecção automática de silêncio ativa</p>
-    </div>
-
     <audio id="audio" crossorigin="anonymous"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        const audio = document.getElementById('audio');
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const status = document.getElementById('status');
         const ouvintes = document.getElementById('ouvintes');
 
-        let detectarSilencio = false;
-        let audioContext = null;
-        let analyser = null;
         let silencioInicio = null;
 
-        // ===== RECEBER STREAM DO SERVIDOR =====
         socket.on('play-stream', (data) => {
             audio.src = data.url;
             audio.play().catch(err => {
-                console.log('Aguardando interação do usuário para tocar');
-            });
-            status.textContent = data.descricao;
             detectarSilencio = data.detectarSilencio || false;
 
             if (detectarSilencio) {
-                console.log('🔇 Detecção de silêncio ATIVADA (60 segundos)');
+                console.log('🔇 Detecção de silêncio ATIVADA');
                 iniciarDeteccaoSilencio();
             } else {
                 pararDeteccaoSilencio();
             }
         });
 
-        // ===== RECEBER MENSAGEM DO SERVIDOR =====
         socket.on('play-mensagem', (data) => {
+            pararDeteccaoSilencio();
             audio.pause();
             audio.src = data.arquivo;
             audio.play();
             status.textContent = '🎙️ Mensagem do Cônego Rafael';
-                console.log('✅ Mensagem terminou');
 
-        // ===== ATUALIZAR NÚMERO DE OUVINTES =====
-        socket.on('ouvintes', (data) => {
-            ouvintes.textContent = `Ouvintes: ${data.total}`;
+            audio.onended = () => {
+                console.log('✅ Mensagem terminou');
+                socket.emit('mensagem-terminou');
+            };
         });
+
+        socket.on('ouvintes', (data) => {
+            ouvintes.textContent = 'Ouvintes: ' + data.total;
+        });
+
+        playBtn.onclick = () => {
             audio.play().then(() => {
                 if (detectarSilencio && !audioContext) {
                     iniciarDeteccaoSilencio();
@@ -151,7 +145,6 @@
             audio.pause();
         };
 
-        // ===== DETECÇÃO DE SILÊNCIO (60 SEGUNDOS) =====
         function iniciarDeteccaoSilencio() {
             if (!audioContext) {
                 try {
@@ -181,25 +174,23 @@
                 analyser.getByteFrequencyData(dataArray);
                 const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
 
-                // Volume abaixo de 5 = silêncio
                 if (volume < 5) {
                     if (!silencioInicio) {
                         silencioInicio = Date.now();
-                        console.log('🔇 Silêncio detectado, iniciando contagem...');
+                        console.log('🔇 Silêncio detectado');
                     } else {
                         const tempoSilencio = (Date.now() - silencioInicio) / 1000;
 
                         if (tempoSilencio >= 60) {
-                            console.log('🔇 60 segundos de silêncio — avisando servidor');
+                            console.log('🔇 60 segundos de silêncio');
                             socket.emit('silencio-detectado');
                             pararDeteccaoSilencio();
                             return;
                         }
                     }
                 } else {
-                    // Reset se houver áudio
                     if (silencioInicio) {
-                        console.log('🔊 Áudio retornou, resetando contador');
+                        console.log('🔊 Áudio retornou');
                         silencioInicio = null;
                     }
                 }
@@ -217,13 +208,13 @@
     </script>
 </body>
 </html>
-
-        // ===== BOTÕES DE CONTROLE =====
-        playBtn.onclick = () => {
-                socket.emit('mensagem-terminou');
-            };
-        });
-
-            // Avisar servidor quando mensagem terminar
-            audio.onended = () => {
+                console.log('Aguardando interação do usuário');
+            });
+            status.textContent = data.descricao;
+        let detectarSilencio = false;
+        let audioContext = null;
+        let analyser = null;
+    <script>
+        const socket = io();
+        const audio = document.getElementById('audio');
 
