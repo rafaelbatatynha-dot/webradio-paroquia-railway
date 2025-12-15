@@ -1,498 +1,510 @@
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS</title>
-        <meta name="description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
-        <meta name="keywords" content="WebRádio, Paróquia, Nossa Senhora Auxiliadora, Iraí, RS, Igreja Católica, Cônego Rafael, Missa, Música Clássica, Rádio Católica">
-        <meta name="author" content="Paróquia Nossa Senhora Auxiliadora">
-        <link rel="canonical" href="https://www.paroquiaauxiliadorairai.com.br">
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS</title>
+    <meta name="description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta name="keywords" content="WebRádio, Paróquia, Nossa Senhora Auxiliadora, Iraí, RS, Igreja Católica, Cônego Rafael, Missa, Música Clássica, Rádio Católica">
+    <meta name="author" content="Paróquia Nossa Senhora Auxiliadora">
+    <link rel="canonical" href="https://www.paroquiaauxiliadorairai.com.br">
 
-        <!-- Open Graph / Facebook -->
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="https://www.paroquiaauxiliadorairai.com.br">
-        <meta property="og:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
-        <meta property="og:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
-        <meta property="og:image" content="https://www.paroquiaauxiliadorairai.com.br/images/og-image.jpg"> <!-- Substitua pela URL da sua imagem -->
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.paroquiaauxiliadorairai.com.br">
+    <meta property="og:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
+    <meta property="og:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta property="og:image" content="https://www.paroquiaauxiliadorairai.com.br/images/og-image.jpg"> <!-- Substitua pela URL da sua imagem -->
 
-        <!-- Twitter -->
-        <meta property="twitter:card" content="summary_large_image">
-        <meta property="twitter:url" content="https://www.paroquiaauxiliadorairai.com.br">
-        <meta property="twitter:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
-        <meta property="twitter:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
-        <meta property="twitter:image" content="https://www.paroquiaauxiliadorairai.com.br/images/twitter-image.jpg"> <!-- Substitua pela URL da sua imagem -->
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://www.paroquiaauxiliadorairai.com.br">
+    <meta property="twitter:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
+    <meta property="twitter:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta property="twitter:image" content="https://www.paroquiaauxiliadorairai.com.br/images/twitter-image.jpg"> <!-- Substitua pela URL da sua imagem -->
 
-        <!-- Favicon -->
-        <link rel="icon" href="/favicon.ico" type="image/x-icon">
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-        <link rel="manifest" href="/site.webmanifest">
-        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
-        <meta name="msapplication-TileColor" content="#da532c">
-        <meta name="theme-color" content="#ffffff">
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
 
-        <style>
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background-color: #f4f7f6;
-                color: #333;
-                margin: 0;
-                padding: 20px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                box-sizing: border-box;
-            }
-            .container {
-                background-color: #fff;
-                border-radius: 12px;
-                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-                padding: 30px;
-                width: 100%;
-                max-width: 450px;
-                text-align: center;
-                position: relative;
-                overflow: hidden;
-            }
-            .header {
-                margin-bottom: 25px;
-            }
-            .header h1 {
-                color: #4a4a4a;
-                font-size: 1.8em;
-                margin-bottom: 10px;
-            }
-            .header p {
-                color: #777;
-                font-size: 0.9em;
-                line-height: 1.5;
-            }
-            .player-controls {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 15px;
-                margin-bottom: 25px;
-            }
-            .player-controls button {
-                background-color: #007bff;
-                color: white;
-                border: none;
-                border-radius: 50%;
-                width: 60px;
-                height: 60px;
-                font-size: 1.8em;
-                cursor: pointer;
-                transition: background-color 0.3s ease, transform 0.2s ease;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
-            }
-            .player-controls button:hover:not(:disabled) {
-                background-color: #0056b3;
-                transform: translateY(-2px);
-            }
-            .player-controls button:active:not(:disabled) {
-                transform: translateY(0);
-                box-shadow: 0 2px 5px rgba(0, 123, 255, 0.4);
-            }
-            .player-controls button:disabled {
-                background-color: #cccccc;
-                cursor: not-allowed;
-                box-shadow: none;
-            }
-            .player-controls .stop-button {
-                background-color: #dc3545;
-                font-size: 1.5em;
-                width: 50px;
-                height: 50px;
-            }
-            .player-controls .stop-button:hover:not(:disabled) {
-                background-color: #c82333;
-            }
-            .volume-control {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 25px;
-                justify-content: center;
-            }
-            .volume-control input[type="range"] {
-                width: 70%;
-                -webkit-appearance: none;
-                height: 8px;
-                background: #ddd;
-                border-radius: 5px;
-                outline: none;
-                transition: opacity .2s;
-            }
-            .volume-control input[type="range"]::-webkit-slider-thumb {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #007bff;
-                cursor: pointer;
-                box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
-            }
-            .volume-control input[type="range"]::-moz-range-thumb {
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #007bff;
-                cursor: pointer;
-                box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
-            }
-            .volume-control i {
-                color: #555;
-                font-size: 1.2em;
-            }
-            .status-info {
-                background-color: #e9ecef;
-                border-radius: 8px;
-                padding: 15px;
-                margin-bottom: 25px;
-                text-align: left;
-            }
-            .status-info p {
-                margin: 5px 0;
-                font-size: 0.9em;
-                color: #555;
-            }
-            .status-info strong {
-                color: #333;
-            }
-            .footer {
-                font-size: 0.8em;
-                color: #999;
-                margin-top: 20px;
-            }
-            .message-overlay {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.85);
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                color: white;
-                font-size: 1.5em;
-                text-align: center;
-                opacity: 0;
-                visibility: hidden;
-                transition: opacity 0.3s ease, visibility 0.3s ease;
-                z-index: 10;
-                padding: 20px;
-                box-sizing: border-box;
-            }
-            .message-overlay.active {
-                opacity: 1;
-                visibility: visible;
-            }
-            .message-overlay p {
-                margin-bottom: 20px;
-            }
-            .message-overlay button {
-                background-color: #007bff;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 0.8em;
-                transition: background-color 0.3s ease;
-            }
-            .message-overlay button:hover {
-                background-color: #0056b3;
-            }
-            /* Font Awesome for icons */
-            @import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css");
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>WebRádio Paróquia Nossa Senhora Auxiliadora</h1>
-                <p>Iraí/RS - Acompanhe nossa programação católica e música clássica.</p>
-            </div>
-
-            <audio id="audioPlayer" preload="auto"></audio>
-            <audio id="messagePlayer" preload="auto"></audio>
-
-            <div class="player-controls">
-                <button id="playButton" disabled><i class="fas fa-play"></i></button>
-                <button id="pauseButton" disabled><i class="fas fa-pause"></i></button>
-                <button id="stopButton" class="stop-button" disabled><i class="fas fa-stop"></i></button>
-            </div>
-
-            <div class="volume-control">
-                <i class="fas fa-volume-down"></i>
-                <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7">
-                <i class="fas fa-volume-up"></i>
-            </div>
-
-            <div class="status-info">
-                <p>Status: <strong id="radioStatus">Desconectado</strong></p>
-                <p>Tocando agora: <strong id="currentStreamDescription">Nenhuma informação</strong></p>
-                <p>Ouvintes: <strong id="listenersCount">0</strong></p>
-            </div>
-
-            <div class="footer">
-                <p>&copy; 2025 Paróquia Nossa Senhora Auxiliadora. Todos os direitos reservados.</p>
-            </div>
-
-            <div id="messageOverlay" class="message-overlay">
-                <p id="messageText">Tocando Mensagem...</p>
-                <button id="closeMessageButton">Fechar Mensagem</button>
-            </div>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .header {
+            margin-bottom: 25px;
+        }
+        .header h1 {
+            color: #4a4a4a;
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #777;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        .player-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .player-controls button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 1.8em;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+        }
+        .player-controls button:hover:not(:disabled) {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        .player-controls button:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 123, 255, 0.4);
+        }
+        .player-controls button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .player-controls .stop-button {
+            background-color: #dc3545;
+            font-size: 1.5em;
+            width: 50px;
+            height: 50px;
+        }
+        .player-controls .stop-button:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 25px;
+            justify-content: center;
+        }
+        .volume-control input[type="range"] {
+            width: 70%;
+            -webkit-appearance: none;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+            outline: none;
+            transition: opacity .2s;
+        }
+        .volume-control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
+        }
+        .volume-control input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
+        }
+        .volume-control i {
+            color: #555;
+            font-size: 1.2em;
+        }
+        .status-info {
+            background-color: #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        .status-info p {
+            margin: 5px 0;
+            font-size: 0.9em;
+            color: #555;
+        }
+        .status-info strong {
+            color: #333;
+        }
+        .footer {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 20px;
+        }
+        .message-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.5em;
+            text-align: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            z-index: 10;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .message-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .message-overlay p {
+            margin-bottom: 20px;
+        }
+        .message-overlay button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background-color 0.3s ease;
+        }
+        .message-overlay button:hover {
+            background-color: #0056b3;
+        }
+        /* Font Awesome for icons */
+        @import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css");
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>WebRádio Paróquia Nossa Senhora Auxiliadora</h1>
+            <p>Iraí/RS - Acompanhe nossa programação católica e música clássica.</p>
         </div>
 
-        <script src="/socket.io/socket.io.js"></script>
-        <script>
-            (function() {
-                const socket = io();
-                const audioPlayer = document.getElementById('audioPlayer');
-                const messagePlayer = document.getElementById('messagePlayer');
-                const playButton = document.getElementById('playButton');
-                const pauseButton = document.getElementById('pauseButton');
-                const stopButton = document.getElementById('stopButton');
-                const volumeSlider = document.getElementById('volumeSlider');
-                const currentStreamDescription = document.getElementById('currentStreamDescription');
-                const radioStatus = document.getElementById('radioStatus');
-                const listenersCount = document.getElementById('listenersCount');
-                const messageOverlay = document.getElementById('messageOverlay');
-                const messageText = document.getElementById('messageText');
-                const closeMessageButton = document.getElementById('closeMessageButton');
+        <!-- ATENÇÃO: O atributo 'src' foi adicionado aqui! -->
+        <audio id="audioPlayer" src="https://webradio-paroquia.onrender.com/stream" preload="auto"></audio>
+        <audio id="messagePlayer" preload="auto"></audio>
 
-                let isPlayingMessage = false; // Flag para controlar se uma mensagem está tocando
+        <div class="player-controls">
+            <button id="playButton" disabled><i class="fas fa-play"></i></button>
+            <button id="pauseButton" disabled><i class="fas fa-pause"></i></button>
+            <button id="stopButton" class="stop-button" disabled><i class="fas fa-stop"></i></button>
+        </div>
 
-                // Inicializa o volume
+        <div class="volume-control">
+            <i class="fas fa-volume-down"></i>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7">
+            <i class="fas fa-volume-up"></i>
+        </div>
+
+        <div class="status-info">
+            <p>Status: <strong id="radioStatus">Desconectado</strong></p>
+            <p>Tocando agora: <strong id="currentStreamDescription">Nenhuma informação</strong></p>
+            <p>Ouvintes: <strong id="listenersCount">0</strong></p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2025 Paróquia Nossa Senhora Auxiliadora. Todos os direitos reservados.</p>
+        </div>
+
+        <div id="messageOverlay" class="message-overlay">
+            <p id="messageText">Tocando Mensagem...</p>
+            <button id="closeMessageButton">Fechar Mensagem</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        (function() {
+            const socket = io();
+            const audioPlayer = document.getElementById('audioPlayer');
+            const messagePlayer = document.getElementById('messagePlayer');
+            const playButton = document.getElementById('playButton');
+            const pauseButton = document.getElementById('pauseButton');
+            const stopButton = document.getElementById('stopButton');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const currentStreamDescription = document.getElementById('currentStreamDescription');
+            const radioStatus = document.getElementById('radioStatus');
+            const listenersCount = document.getElementById('listenersCount');
+            const messageOverlay = document.getElementById('messageOverlay');
+            const messageText = document.getElementById('messageText');
+            const closeMessageButton = document.getElementById('closeMessageButton');
+
+            let isPlayingMessage = false; // Flag para controlar se uma mensagem está tocando
+
+            // Inicializa o volume
+            audioPlayer.volume = volumeSlider.value;
+            messagePlayer.volume = volumeSlider.value;
+
+            // --- NOVO CÓDIGO AQUI ---
+            // Habilita o botão de play se o player principal já tiver uma fonte
+            if (audioPlayer.src) {
+                playButton.disabled = false;
+                radioStatus.textContent = 'Pronto. Clique no ▶ para iniciar.';
+            }
+            // --- FIM DO NOVO CÓDIGO ---
+
+            volumeSlider.addEventListener('input', () => {
                 audioPlayer.volume = volumeSlider.value;
                 messagePlayer.volume = volumeSlider.value;
+            });
 
-                volumeSlider.addEventListener('input', () => {
-                    audioPlayer.volume = volumeSlider.value;
-                    messagePlayer.volume = volumeSlider.value;
-                });
-
-                // Controles do player principal
-                playButton.addEventListener('click', () => {
-                    if (isPlayingMessage) {
-                        messagePlayer.play().then(() => {
-                            console.log('▶️ Mensagem retomada manualmente.');
-                            playButton.disabled = true;
-                            pauseButton.disabled = false;
-                            radioStatus.textContent = 'Mensagem';
-                        }).catch(error => {
-                            console.error('❌ Erro ao retomar mensagem:', error);
-                            radioStatus.textContent = 'Erro ao tocar mensagem.';
-                        });
-                    } else {
-                        audioPlayer.play().then(() => {
-                            console.log('▶️ Stream principal iniciado manualmente.');
-                            playButton.disabled = true;
-                            pauseButton.disabled = false;
-                            radioStatus.textContent = 'Reproduzindo';
-                        }).catch(error => {
-                            console.error('❌ Erro ao iniciar stream principal:', error);
-                            radioStatus.textContent = 'Erro ao tocar rádio.';
-                        });
-                    }
-                });
-
-                pauseButton.addEventListener('click', () => {
-                    if (isPlayingMessage) {
-                        messagePlayer.pause();
-                        console.log('⏸️ Mensagem pausada manualmente.');
-                        radioStatus.textContent = 'Mensagem Pausada';
-                    } else {
-                        audioPlayer.pause();
-                        console.log('⏸️ Stream principal pausado manualmente.');
-                        radioStatus.textContent = 'Pausado';
-                    }
-                    playButton.disabled = false;
-                    pauseButton.disabled = true;
-                });
-
-                stopButton.addEventListener('click', () => {
-                    audioPlayer.pause();
-                    audioPlayer.src = ''; // Limpa a fonte para parar completamente
-                    messagePlayer.pause();
-                    messagePlayer.src = '';
-                    isPlayingMessage = false;
-                    messageOverlay.classList.remove('active');
-                    console.log('⏹️ Rádio parada completamente.');
-                    playButton.disabled = false;
-                    pauseButton.disabled = true;
-                    radioStatus.textContent = 'Parado';
-                    currentStreamDescription.textContent = 'Rádio Inativa';
-                });
-
-                // Eventos do Socket.IO
-                socket.on('connect', () => {
-                    console.log('✅ Conectado ao servidor Socket.IO');
-                    radioStatus.textContent = 'Conectado. Aguardando programação...';
-                    // Habilita o botão de play assim que conectar, para o usuário poder tentar iniciar
-                    playButton.disabled = false;
-                    pauseButton.disabled = true;
-                    stopButton.disabled = false;
-                });
-
-                socket.on('disconnect', () => {
-                    console.log('❌ Desconectado do servidor Socket.IO');
-                    radioStatus.textContent = 'Desconectado. Tentando reconectar...';
-                    playButton.disabled = true;
-                    pauseButton.disabled = true;
-                    stopButton.disabled = true;
-                });
-
-                socket.on('play-stream', (data) => {
-                    console.log('🔄 Recebido comando play-stream:', data);
-                    isPlayingMessage = false;
-                    messageOverlay.classList.remove('active'); // Garante que o overlay da mensagem esteja oculto
-
-                    currentStreamDescription.textContent = data.description;
-                    audioPlayer.src = data.url;
-
-                    // Tenta tocar automaticamente. Se falhar (autoplay bloqueado), o usuário precisará clicar no play.
-                    audioPlayer.load(); // Recarrega o stream
-                    audioPlayer.play().then(() => {
-                        console.log('▶️ Stream principal iniciado automaticamente.');
-                        playButton.disabled = true;
-                        pauseButton.disabled = false;
-                        radioStatus.textContent = 'Reproduzindo';
-                    }).catch(error => {
-                        console.warn('⚠️ Autoplay bloqueado ou erro ao iniciar stream principal:', error);
-                        radioStatus.textContent = 'Pausado. Clique no ▶ para iniciar.';
-                        playButton.disabled = false;
-                        pauseButton.disabled = true;
-                    });
-                });
-
-                socket.on('play-mensagem', (data) => {
-                    console.log('📢 Recebido comando play-mensagem:', data);
-                    isPlayingMessage = true;
-                    currentStreamDescription.textContent = `Mensagem: ${data.nome}`;
-                    messageText.textContent = `Tocando: ${data.nome}`;
-                    messagePlayer.src = data.arquivo;
-                    messageOverlay.classList.add('active'); // Mostra o overlay
-
-                    // Pausa o stream principal e tenta tocar a mensagem
-                    audioPlayer.pause();
-                    messagePlayer.load(); // Recarrega a mensagem
+            // Controles do player principal
+            playButton.addEventListener('click', () => {
+                if (isPlayingMessage) {
                     messagePlayer.play().then(() => {
-                        console.log('▶️ Mensagem iniciada automaticamente.');
+                        console.log('▶️ Mensagem retomada manualmente.');
                         playButton.disabled = true;
                         pauseButton.disabled = false;
                         radioStatus.textContent = 'Mensagem';
                     }).catch(error => {
-                        console.warn('⚠️ Autoplay bloqueado ou erro ao iniciar mensagem:', error);
-                        radioStatus.textContent = 'Mensagem. Clique no ▶ para iniciar.';
-                        playButton.disabled = false;
-                        pauseButton.disabled = true;
-                        // Se a mensagem não tocar, o timeout no servidor ainda vai retornar para a rádio principal
+                        console.error('❌ Erro ao retomar mensagem:', error);
+                        radioStatus.textContent = 'Erro ao tocar mensagem.';
                     });
-
-                    // Quando a mensagem terminar, o servidor enviará um novo 'play-stream'
-                    messagePlayer.onended = () => {
-                        console.log('⏹️ Mensagem finalizada pelo player.');
-                        messageOverlay.classList.remove('active');
-                        isPlayingMessage = false;
-                        // O servidor já vai enviar o comando para retomar a rádio principal
-                    };
-                });
-
-                socket.on('listeners-update', (count) => {
-                    listenersCount.textContent = count;
-                });
-
-                // Evento para fechar o overlay da mensagem (opcional, a mensagem termina sozinha)
-                closeMessageButton.addEventListener('click', () => {
-                    messageOverlay.classList.remove('active');
-                    // Se o usuário fechar manualmente, ainda esperamos o servidor para retomar a rádio
-                });
-
-                // Eventos do áudio principal
-                audioPlayer.addEventListener('error', (e) => {
-                    console.error('❌ Erro no áudio principal:', audioPlayer.error);
-                    let errorMsg = 'Erro desconhecido no stream principal';
-                    if (audioPlayer.error) {
-                        const errorCodes = ['', 'Abortado', 'Erro de rede', 'Erro de decodificação', 'Formato não suportado'];
-                        errorMsg = errorCodes[audioPlayer.error.code] || 'Erro ' + audioPlayer.error.code;
-                    }
-                    radioStatus.textContent = errorMsg;
-                    playButton.disabled = false;
-                    pauseButton.disabled = true;
-                    isPlayingMessage = false;
-                    messageOverlay.classList.remove('active');
-                    socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
-                });
-
-                audioPlayer.addEventListener('canplay', () => {
-                    console.log('✅ Stream principal pronto para tocar');
-                });
-
-                audioPlayer.addEventListener('playing', () => {
-                    console.log('▶️ Reproduzindo stream principal');
-                    if (!isPlayingMessage) {
+                } else {
+                    audioPlayer.play().then(() => {
+                        console.log('▶️ Stream principal iniciado manualmente.');
                         playButton.disabled = true;
                         pauseButton.disabled = false;
                         radioStatus.textContent = 'Reproduzindo';
-                    }
-                });
+                    }).catch(error => {
+                        console.error('❌ Erro ao iniciar stream principal:', error);
+                        radioStatus.textContent = 'Erro ao tocar rádio.';
+                    });
+                }
+            });
 
-                audioPlayer.addEventListener('pause', () => {
-                    console.log('⏸️ Pausado stream principal');
-                    if (!isPlayingMessage) {
-                        playButton.disabled = false;
-                        pauseButton.disabled = true;
-                        radioStatus.textContent = 'Pausado';
-                    }
-                });
+            pauseButton.addEventListener('click', () => {
+                if (isPlayingMessage) {
+                    messagePlayer.pause();
+                    console.log('⏸️ Mensagem pausada manualmente.');
+                    radioStatus.textContent = 'Mensagem Pausada';
+                } else {
+                    audioPlayer.pause();
+                    console.log('⏸️ Stream principal pausado manualmente.');
+                    radioStatus.textContent = 'Pausado';
+                }
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+            });
 
-                audioPlayer.addEventListener('waiting', () => {
-                    console.log('⏳ Buffering stream principal...');
-                    radioStatus.textContent = 'Carregando...';
-                });
+            stopButton.addEventListener('click', () => {
+                audioPlayer.pause();
+                audioPlayer.src = ''; // Limpa a fonte para parar completamente
+                messagePlayer.pause();
+                messagePlayer.src = '';
+                isPlayingMessage = false;
+                messageOverlay.classList.remove('active');
+                console.log('⏹️ Rádio parada completamente.');
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+                radioStatus.textContent = 'Parado';
+                currentStreamDescription.textContent = 'Rádio Inativa';
+            });
 
-                // Eventos do player de mensagem
-                messagePlayer.addEventListener('error', (e) => {
-                    console.error('❌ Erro no áudio da mensagem:', messagePlayer.error);
-                    let errorMsg = 'Erro desconhecido na mensagem';
-                    if (messagePlayer.error) {
-                        const errorCodes = ['', 'Abortado', 'Erro de rede', 'Erro de decodificação', 'Formato não suportado'];
-                        errorMsg = errorCodes[messagePlayer.error.code] || 'Erro ' + messagePlayer.error.code;
-                    }
-                    radioStatus.textContent = errorMsg;
-                    messageOverlay.classList.remove('active');
-                    isPlayingMessage = false;
-                    socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
-                });
+            // Eventos do Socket.IO
+            socket.on('connect', () => {
+                console.log('✅ Conectado ao servidor Socket.IO');
+                radioStatus.textContent = 'Conectado. Aguardando programação...';
+                // Habilita o botão de play assim que conectar, para o usuário poder tentar iniciar
+                // (Já habilitado acima se audioPlayer.src existe, mas mantemos aqui para redundância ou caso o src seja definido dinamicamente)
+                if (!audioPlayer.src) { // Só habilita se ainda não tiver src, para não sobrescrever o status inicial
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
+                    stopButton.disabled = false;
+                }
+            });
 
-                messagePlayer.addEventListener('playing', () => {
-                    console.log('▶️ Reproduzindo mensagem');
+            socket.on('disconnect', () => {
+                console.log('❌ Desconectado do servidor Socket.IO');
+                radioStatus.textContent = 'Desconectado. Tentando reconectar...';
+                playButton.disabled = true;
+                pauseButton.disabled = true;
+                stopButton.disabled = true;
+            });
+
+            socket.on('play-stream', (data) => {
+                console.log('🔄 Recebido comando play-stream:', data);
+                isPlayingMessage = false;
+                messageOverlay.classList.remove('active'); // Garante que o overlay da mensagem esteja oculto
+
+                currentStreamDescription.textContent = data.description;
+                audioPlayer.src = data.url;
+
+                // Tenta tocar automaticamente. Se falhar (autoplay bloqueado), o usuário precisará clicar no play.
+                audioPlayer.load(); // Recarrega o stream
+                audioPlayer.play().then(() => {
+                    console.log('▶️ Stream principal iniciado automaticamente.');
+                    playButton.disabled = true;
+                    pauseButton.disabled = false;
+                    radioStatus.textContent = 'Reproduzindo';
+                }).catch(error => {
+                    console.warn('⚠️ Autoplay bloqueado ou erro ao iniciar stream principal:', error);
+                    radioStatus.textContent = 'Pausado. Clique no ▶ para iniciar.';
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
+                });
+            });
+
+            socket.on('play-mensagem', (data) => {
+                console.log('📢 Recebido comando play-mensagem:', data);
+                isPlayingMessage = true;
+                currentStreamDescription.textContent = `Mensagem: ${data.nome}`;
+                messageText.textContent = `Tocando: ${data.nome}`;
+                messagePlayer.src = data.arquivo;
+                messageOverlay.classList.add('active'); // Mostra o overlay
+
+                // Pausa o stream principal e tenta tocar a mensagem
+                audioPlayer.pause();
+                messagePlayer.load(); // Recarrega a mensagem
+                messagePlayer.play().then(() => {
+                    console.log('▶️ Mensagem iniciada automaticamente.');
                     playButton.disabled = true;
                     pauseButton.disabled = false;
                     radioStatus.textContent = 'Mensagem';
-                });
-
-                messagePlayer.addEventListener('pause', () => {
-                    console.log('⏸️ Pausado mensagem');
+                }).catch(error => {
+                    console.warn('⚠️ Autoplay bloqueado ou erro ao iniciar mensagem:', error);
+                    radioStatus.textContent = 'Mensagem. Clique no ▶ para iniciar.';
                     playButton.disabled = false;
                     pauseButton.disabled = true;
-                    radioStatus.textContent = 'Mensagem Pausada';
+                    // Se a mensagem não tocar, o timeout no servidor ainda vai retornar para a rádio principal
                 });
 
-                console.log('✅ WebRádio Player inicializado');
-            })();
-        </script>
-    </body>
-    </html>
+                // Quando a mensagem terminar, o servidor enviará um novo 'play-stream'
+                messagePlayer.onended = () => {
+                    console.log('⏹️ Mensagem finalizada pelo player.');
+                    messageOverlay.classList.remove('active');
+                    isPlayingMessage = false;
+                    // O servidor já vai enviar o comando para retomar a rádio principal
+                };
+            });
+
+            socket.on('listeners-update', (count) => {
+                listenersCount.textContent = count;
+            });
+
+            // Evento para fechar o overlay da mensagem (opcional, a mensagem termina sozinha)
+            closeMessageButton.addEventListener('click', () => {
+                messageOverlay.classList.remove('active');
+                // Se o usuário fechar manualmente, ainda esperamos o servidor para retomar a rádio
+            });
+
+            // Eventos do áudio principal
+            audioPlayer.addEventListener('error', (e) => {
+                console.error('❌ Erro no áudio principal:', audioPlayer.error);
+                let errorMsg = 'Erro desconhecido no stream principal';
+                if (audioPlayer.error) {
+                    const errorCodes = ['', 'Abortado', 'Erro de rede', 'Erro de decodificação', 'Formato não suportado'];
+                    errorMsg = errorCodes[audioPlayer.error.code] || 'Erro ' + audioPlayer.error.code;
+                }
+                radioStatus.textContent = errorMsg;
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+                isPlayingMessage = false;
+                messageOverlay.classList.remove('active');
+                socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
+            });
+
+            audioPlayer.addEventListener('canplay', () => {
+                console.log('✅ Stream principal pronto para tocar');
+            });
+
+            audioPlayer.addEventListener('playing', () => {
+                console.log('▶️ Reproduzindo stream principal');
+                if (!isPlayingMessage) {
+                    playButton.disabled = true;
+                    pauseButton.disabled = false;
+                    radioStatus.textContent = 'Reproduzindo';
+                }
+            });
+
+            audioPlayer.addEventListener('pause', () => {
+                console.log('⏸️ Pausado stream principal');
+                if (!isPlayingMessage) {
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
+                    radioStatus.textContent = 'Pausado';
+                }
+            });
+
+            audioPlayer.addEventListener('waiting', () => {
+                console.log('⏳ Buffering stream principal...');
+                radioStatus.textContent = 'Carregando...';
+            });
+
+            // Eventos do player de mensagem
+            messagePlayer.addEventListener('error', (e) => {
+                console.error('❌ Erro no áudio da mensagem:', messagePlayer.error);
+                let errorMsg = 'Erro desconhecido na mensagem';
+                if (messagePlayer.error) {
+                    const errorCodes = ['', 'Abortado', 'Erro de rede', 'Erro de decodificação', 'Formato não suportado'];
+                    errorMsg = errorCodes[messagePlayer.error.code] || 'Erro ' + messagePlayer.error.code;
+                }
+                radioStatus.textContent = errorMsg;
+                messageOverlay.classList.remove('active');
+                isPlayingMessage = false;
+                socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
+            });
+
+            messagePlayer.addEventListener('playing', () => {
+                console.log('▶️ Reproduzindo mensagem');
+                playButton.disabled = true;
+                pauseButton.disabled = false;
+                radioStatus.textContent = 'Mensagem';
+            });
+
+            messagePlayer.addEventListener('pause', () => {
+                console.log('⏸️ Pausado mensagem');
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+                radioStatus.textContent = 'Mensagem Pausada';
+            });
+
+            console.log('✅ WebRádio Player inicializado');
+        })();
+    </script>
+</body>
+</html>
