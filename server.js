@@ -58,7 +58,7 @@
     // ===== LISTA COMPLETA DE MENSAGENS DO GOOGLE DRIVE =====
     const mensagensCache = [
         { id: '1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu', name: 'msg_010.mp3' },
-        { id: '1v10QzlGw4gGsJgGgsI6Gx7u0YHGzAmZH', name: 'msg_009.mp3' },
+        { id: '1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH', name: 'msg_009.mp3' },
         { id: '1nEiDvQ5-8RXWIO8btpqVMvEzJnL7IwpP', name: 'msg_008.mp3' },
         { id: '11LSjJO3r_dKMls2YOrxzRvbchoM-Eoz3', name: 'msg_007.mp3' },
         { id: '1vxw4yR4NcBfs-DCvktOSzsi7zvhiUkWh', name: 'msg_006.mp3' },
@@ -128,10 +128,10 @@
 
     // ===== MAPA DE STREAMS ORIGINAIS (HTTP) =====
     const streamSources = {
-        'maraba': 'http://stream.maraba.com.br:8000/live', // Exemplo, substitua pela URL real da Rádio Marabá
-        'vozimaculado': 'http://r13.ciclano.io:9033/live',
-        'classica': 'http://radio.musicasclassicas.com.br:8000/live', // Exemplo, substitua pela URL real da Rádio Clássica
-        'ametista-fm': 'http://stream.ametistafm.com.br:8000/live' // Exemplo, substitua pela URL real da Rádio Ametista FM
+        'maraba': 'https://streaming.speedrs.com.br/radio/8010/maraba', // Rádio Marabá - CORRIGIDO
+        'vozimaculado': 'http://r13.ciclano.io:9033/live', // Rádio Voz do Coração Imaculado - CORRETO
+        'classica': 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128' // Swiss Classic Radio - CORRIGIDO
+        // 'ametista-fm': 'http://stream.ametistafm.com.br:8000/live' // Rádio Ametista FM - REMOVIDO TEMPORARIAMENTE
     };
 
     // ===== ROTAS DE PROXY COM FFMPEG =====
@@ -264,12 +264,7 @@
             url = '/proxy-stream/maraba';
             descricao = '📻 Voz do Pastor - Rádio Marabá';
         }
-        // Sábado 19h00-20h30: Missa Rádio Ametista FM
-        else if (dia === 'sabado' && ((hora === 19 && minuto >= 0) || (hora === 20 && minuto < 30))) {
-            url = '/proxy-stream/ametista-fm';
-            descricao = '🙏 Santa Missa de Sábado - Rádio Ametista FM';
-        }
-        // Música Clássica: 00h10-03h00
+        // Música Clássica: 00h10-03h00 (e mensagens a cada 15 min)
         else if ((hora === 0 && minuto >= 10) || (hora === 1) || (hora === 2) || (hora === 3 && minuto < 0)) {
             url = '/proxy-stream/classica';
             descricao = '🎼 Madrugada Clássica Erudita';
@@ -311,9 +306,6 @@
         } else if (tipo === 'classica') {
             url = '/proxy-stream/classica';
             descricao = 'Música Clássica';
-        } else if (tipo === 'ametista-fm') {
-            url = '/proxy-stream/ametista-fm';
-            descricao = 'Rádio Ametista FM';
         } else {
             return res.status(400).send('Tipo inválido');
         }
@@ -335,17 +327,16 @@
 
     server.listen(PORT, () => {
         console.log(`
-    ╔════════════════════════════════════════════════════╗
-    ║  🎙️  WebRádio Paróquia NSA                       ║
-    ║  ✅ Servidor ativo na porta ${PORT}                 ║
-    ║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║
-    ║  📊 Mensagens carregadas: ${mensagensCache.length}         ║
-    ║  🎵 Rádio Principal: Voz do Coração Imaculado    ║
-    ║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)   ║
-    ║  ⛪ Domingo: Missa Marabá 8h30-9h45             ║
-    ║  📻 Sábado: Voz do Pastor 12h50-13h05           ║
-    ║  🙏 Sábado: Missa Ametista 19h00-20h30          ║
-    ║  ⏰ Mensagens diárias: 10h, 12h40, 13h52...     ║
-    ╚════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════╗
+║  🎙️  WebRádio Paróquia NSA                       ║
+║  ✅ Servidor ativo na porta ${PORT}                 ║
+║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║
+║  📊 Mensagens carregadas: ${mensagensCache.length}         ║
+║  🎵 Rádio Principal: Voz do Coração Imaculado    ║
+║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)   ║
+║  ⛪ Domingo: Missa Marabá 8h30-9h45             ║
+║  📻 Sábado: Voz do Pastor 12h50-13h05           ║
+║  ⏰ Mensagens diárias: 10h, 12h40, 13h52...     ║
+╚════════════════════════════════════════════════════╝
         `);
     });
