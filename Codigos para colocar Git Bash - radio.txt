@@ -1,0 +1,3 @@
+git add .
+git commit -m "Corrige SyntaxError no server.js e tenta deploy do proxy robusto"
+git push origin main

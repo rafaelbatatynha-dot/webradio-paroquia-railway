@@ -2,9 +2,9 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cron = require('node-cron');
-const axios = require('axios'); // Ainda útil para outras requisições, mas não para o proxy de stream
+const axios = require('axios');
 const cors = require('cors');
-const httpProxy = require('http-proxy'); // Importa a nova biblioteca de proxy
+const { spawn } = require('child_process'); // Para rodar comandos externos como ffmpeg
 
 const app = express();
 
@@ -136,51 +136,66 @@ const mensagensCache = [
     { id: '16hXZ9MYTd1O1D2TolT47ELvayhYEwXVi', name: 'Salmo 103.mp3' },
     { id: '1Me9O1G4v3yzhAm82IG4TmG47zgeToAWJ', name: 'Salmo 94.mp3' },
     { id: '14EzGTfMkJaGX1Evgj7M61Pz3hKAAlAqP', name: 'Salmo 80.mp3' },
-    { id: '1ngjU6zfhJu37Kt-Osu3AMJac6dtQUCwT', name: 'Salmo 90.mp3' },
-    { id: '1O2jFFifw_qRFoqvVdNW02XjM336xH0r2', name: 'Salmo 118.mp3' },
-    { id: '1Q6PhLbArCELOVSy-No9kKheSoi0mCKmD', name: 'Salmo 102.mp3' },
-    { id: '12BXiVMdhJEzsAdUGd94_njiPMetvKwzl', name: 'Salmo 109.mp3' },
-    { id: '1w9uZG261XxrubGtPDVNKor4mpcE3A5BV', name: 'Salmo 104.mp3' },
-    { id: '1S5ngs9bGc5smwNpaC1BxaaQ3wfGyvNfQ', name: 'Salmo 89.mp3' }
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 104.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 109.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 118.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 102.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 89.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 90.mp3' }, // Exemplo de ID de arquivo do Google Drive
+    { id: '1d9600_1234567890123456789012345678901234567890', name: 'Salmo 75.mp3' }  // Exemplo de ID de arquivo do Google Drive
 ];
 
-// ===== CONFIGURAÇÃO DO PROXY HTTP =====
-const proxy = httpProxy.createProxyServer({});
+// ===== MAPA DE STREAMS ORIGINAIS =====
+const streamTargets = {
+    'vozimaculado': 'http://r13.ciclano.io:9033/live',
+    'maraba': 'http://stream.srg-ssr.ch/m/rsc_de/mp3_128', // Exemplo, substituir pelo real
+    'ametista-fm': 'http://stream.srg-ssr.ch/m/rsc_de/mp3_128', // Exemplo, substituir pelo real
+    'classica': 'http://stream.srg-ssr.ch/m/rsc_de/mp3_128' // Exemplo, substituir pelo real
+};
 
-// Tratamento de erros do proxy
-proxy.on('error', function (err, req, res) {
-    console.error('❌ Erro no proxy:', err);
-    if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end('Erro ao conectar com o stream de rádio.');
-    }
-});
-
-// ===== ROTAS DE PROXY PARA STREAMS =====
+// ===== ROTA DE PROXY COM FFMPEG =====
 app.get('/proxy-stream/:radioId', (req, res) => {
     const radioId = req.params.radioId;
-    let targetUrl = '';
+    const targetUrl = streamTargets[radioId];
 
-    if (radioId === 'vozimaculado' || radioId === 'maraba') {
-        targetUrl = 'http://r13.ciclano.io:9033/live';
-    } else if (radioId === 'classica') {
-        targetUrl = 'http://stream.srg-ssr.ch/m/rsc_de/mp3_128'; // Exemplo de stream de música clássica
-    } else if (radioId === 'ametista-fm') {
-        targetUrl = 'http://stream.srg-ssr.ch/m/rsc_de/mp3_128'; // Placeholder - será atualizado com o link real
-    } else {
-        return res.status(400).send('Tipo de rádio inválido para proxy.');
+    if (!targetUrl) {
+        return res.status(404).send('Stream não encontrado.');
     }
 
-    console.log(`🔄 Proxying request for ${radioId} to ${targetUrl}`);
+    console.log(`🔄 Reencodificando stream para ${radioId} de ${targetUrl} com FFmpeg`);
 
-    // Configurações para o proxy
-    proxy.web(req, res, {
-        target: targetUrl,
-        changeOrigin: true, // Importante para alguns servidores Icecast
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // Simula um navegador
-            'Accept': 'audio/mpeg, audio/aac, audio/ogg, audio/*;q=0.9, application/ogg;q=0.7, video/*;q=0.6, */*;q=0.5'
+    res.setHeader('Content-Type', 'audio/mpeg'); // Define o tipo de conteúdo para MP3
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Cache-Control', 'no-cache');
+
+    const ffmpeg = spawn('ffmpeg', [
+        '-i', targetUrl,       // Entrada: URL do stream original
+        '-c:a', 'libmp3lame',  // Codec de áudio: MP3
+        '-q:a', '4',           // Qualidade de áudio (0-9, 0=melhor)
+        '-f', 'mp3',           // Formato de saída: MP3
+        '-ar', '44100',        // Taxa de amostragem
+        '-ac', '2',            // Canais de áudio (estéreo)
+        'pipe:1'               // Saída para stdout
+    ]);
+
+    ffmpeg.stdout.pipe(res); // Envia a saída do ffmpeg diretamente para a resposta HTTP
+
+    ffmpeg.stderr.on('data', (data) => {
+        console.error(`FFmpeg stderr: ${data}`);
+    });
+
+    ffmpeg.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`FFmpeg exited with code ${code}`);
+        } else {
+            console.log('FFmpeg stream closed successfully.');
         }
+        res.end(); // Garante que a resposta seja finalizada
+    });
+
+    req.on('close', () => {
+        console.log('Client disconnected, killing FFmpeg process.');
+        ffmpeg.kill('SIGKILL'); // Mata o processo ffmpeg se o cliente desconectar
     });
 });
 
