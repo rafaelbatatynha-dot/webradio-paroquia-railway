@@ -3,32 +3,28 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cron = require('node-cron');
 const axios = require('axios');
-const cors = require('cors'); // Importa o módulo CORS
+const cors = require('cors');
 
 const app = express();
 
 // ===== CONFIGURAÇÃO DO CORS =====
-// Lista de origens permitidas para acessar seu servidor
 const allowedOrigins = [
     'https://www.paroquiaauxiliadorairai.com.br',
     'https://webradio-paroquia.onrender.com',
-    'http://localhost:3000' // Para testes locais
+    'http://localhost:3000'
 ];
 
-// Configuração do CORS para o Express (rotas HTTP)
 app.use(cors({
     origin: function (origin, callback) {
-        // Permite requisições sem 'origin' (ex: de ferramentas como Postman ou requisições do mesmo servidor)
         if (!origin) return callback(null, true);
         if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'A política de CORS para esta origem não permite acesso.';
+            const msg = 'CORS policy violation';
             return callback(new Error(msg), false);
         }
         return callback(null, true);
     }
 }));
 
-// Middleware para ignorar o aviso do ngrok (se estiver usando)
 app.use((req, res, next) => {
     res.setHeader('ngrok-skip-browser-warning', 'true');
     next();
@@ -36,178 +32,183 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
-// ===== CONFIGURAÇÃO DO SOCKET.IO COM CORS =====
-// É CRÍTICO que o Socket.IO tenha sua própria configuração de CORS
 const io = socketIo(server, {
     cors: {
-        origin: allowedOrigins, // Permite as mesmas origens definidas acima
-        methods: ["GET", "POST"], // Métodos HTTP permitidos
-        credentials: true // Permite o envio de cookies de credenciais
+        origin: allowedOrigins,
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
 const PORT = process.env.PORT || 3000;
-
-// ===== CONFIGURAÇÃO DO GOOGLE DRIVE =====
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
-// ========================================
 
 app.use(express.static('public'));
 
-// Variável global para armazenar o stream atual e sua descrição
+// ===== VARIÁVEIS GLOBAIS =====
 let currentPlayingStream = {
     url: '',
     description: ''
 };
 
-// ===== PROXY PARA STREAMS =====
-// Este proxy é essencial para contornar problemas de CORS e mixed content
-// ao tentar reproduzir streams de áudio de diferentes origens.
-app.get('/proxy-stream/:tipo', (req, res) => {
-    const tipo = req.params.tipo;
-    let streamUrl = '';
+let isPlayingMessage = false;
+let messageTimeout = null;
 
-    if (tipo === 'vozimaculado') {
-        streamUrl = 'http://r13.ciclano.io:9033/live';
-    } else if (tipo === 'maraba') {
-        streamUrl = 'https://streaming.speedrs.com.br/radio/8010/maraba';
-    } else if (tipo === 'classica') {
-        streamUrl = 'https://livestreaming-node-2.srg-ssr.ch/srgssr/rsc_de/mp3/128';
-    } else if (tipo === 'ametista-fm') {
-        // Usando o link do portal radios.com.br diretamente, como solicitado
-        streamUrl = 'https://www.radios.com.br/aovivo/radio-ametista-885-fm/16128';
-    }
-
-    if (!streamUrl) {
-        return res.status(400).send('Stream inválido ou não configurado');
-    }
-
-    // Usando axios para lidar com o stream, pois ele pode lidar melhor com redirecionamentos
-    // e simular um navegador para acessar o portal.
-    axios({
-        method: 'get',
-        url: streamUrl,
-        responseType: 'stream',
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36', // Simula um navegador completo
-            'Accept': 'audio/mpeg, audio/aac, audio/ogg, audio/*;q=0.9, application/ogg;q=0.7, video/*;q=0.9, */*;q=0.8' // Aceita tipos de áudio
-        }
-    }).then(response => {
-        // Tenta inferir o Content-Type do stream real se houver um redirecionamento ou se o portal retornar um tipo de áudio
-        const contentType = response.headers['content-type'] || 'audio/mpeg';
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Access-Control-Allow-Origin', '*'); // Permite que qualquer origem acesse este proxy
-        response.data.pipe(res);
-    }).catch(err => {
-        console.error(`Erro no proxy para ${tipo} (${streamUrl}):`, err.message);
-        res.status(500).send('Erro no proxy ao tentar conectar ao stream');
-        // Em caso de erro no proxy, tentar voltar para a Voz Imaculada
-        if (currentPlayingStream.url !== '/proxy-stream/vozimaculado') {
-            console.log('Tentando fallback para Voz do Coração Imaculado devido a erro no stream.');
-            io.emit('play-stream', { url: '/proxy-stream/vozimaculado', descricao: '🎵 Rádio Voz do Coração Imaculado (Fallback)' });
-        }
-    });
-});
-
-// ===== PROXY PARA MENSAGENS (Google Drive) =====
-// Essencial para baixar arquivos do Google Drive sem bloqueios de CORS
-app.get('/proxy-mensagem/:fileId', (req, res) => {
-    const fileId = req.params.fileId;
-    const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-
-    console.log(`📥 Baixando mensagem via proxy: ${fileId}`);
-
-    axios({
-        method: 'get',
-        url: url,
-        responseType: 'stream',
-        headers: {
-            'User-Agent': 'Mozilla/5.0' // Simula um navegador para evitar bloqueios
-        }
-    }).then(response => {
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        response.data.pipe(res);
-    }).catch(err => {
-        console.error('❌ Erro ao baixar mensagem via proxy:', err.message);
-        res.status(500).send('Erro ao baixar mensagem do Google Drive');
-    });
-});
-
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
-});
-
-// ===== WEBSOCKET =====
-io.on('connection', (socket) => {
-    console.log('✅ Ouvinte conectado');
-    io.emit('ouvintes', { total: io.engine.clientsCount });
-
-    // Envia o stream atual para o novo ouvinte ao conectar
-    if (currentPlayingStream.url) {
-        socket.emit('play-stream', currentPlayingStream);
-    }
-
-    socket.on('disconnect', () => {
-        console.log('❌ Ouvinte desconectado');
-        io.emit('ouvintes', { total: io.engine.clientsCount });
-    });
-});
-
-// ===== LISTA DE MENSAGENS (GOOGLE DRIVE) =====
-// Manteremos esta lista por enquanto, mas será substituída pela importação automática
-let listaMensagens = [
-    "1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu", // msg_010.mp3
-    "1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH", // msg_009.mp3
-    "1nEiDvQ5-8RXWIO8btpqVMvEzJnL7IwpP", // msg_008.mp3
-    "11LSjJO3r_dKMls2YOrxzRvbchoM-Eoz3", // msg_007.mp3
-    "1vxw4yR4NcBfs-DCvktOSzsi7zvhiUkWh", // msg_006.mp3
-    "13LaeViIDUK-IwZCALw-5mV5sHTYoQkiZ", // msg_005.mp3
-    "1gFFmjUUNoqkdIHMGc-cYxP9SX6Zpp8v4", // msg_004.mp3
-    "1N49UV49UgOX8MaYmCO0EJwN2VB1Izp3S", // msg_003.mp3
-    "1f1xLhQWdCdLNCyHHnaHgH6zihHIE4gcv", // msg_002.mp3
-    "118tRazLR0sUIks4E43HH9ggOB_VMC7Pl", // msg_001.mp3
+// ===== LISTA COMPLETA DE MENSAGENS DO GOOGLE DRIVE =====
+// Obtida do script do Google Apps Script
+const mensagensCache = [
+    { id: '1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu', name: 'msg_010.mp3' },
+    { id: '1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH', name: 'msg_009.mp3' },
+    { id: '1nEiDvQ5-8RXWIO8btpqVMvEzJnL7IwpP', name: 'msg_008.mp3' },
+    { id: '11LSjJO3r_dKMls2YOrxzRvbchoM-Eoz3', name: 'msg_007.mp3' },
+    { id: '1vxw4yR4NcBfs-DCvktOSzsi7zvhiUkWh', name: 'msg_006.mp3' },
+    { id: '13LaeViIDUK-IwZCALw-5mV5sHTYoQkiZ', name: 'msg_005.mp3' },
+    { id: '1gFFmjUUNoqkdIHMGc-cYxP9SX6Zpp8v4', name: 'msg_004.mp3' },
+    { id: '1N49UV49UgOX8MaYmCO0EJwN2VB1Izp3S', name: 'msg_003.mp3' },
+    { id: '1f1xLhQWdCdLNCyHHnaHgH6zihHIE4gcv', name: 'msg_002.mp3' },
+    { id: '118tRazLR0sUIks4E43HH9ggOB_VMC7Pl', name: 'msg_001.mp3' },
+    { id: '1uX99frB_rnEU_uBD57u2WcdJaox4c6j_', name: 'Salmo 106.mp3' },
+    { id: '1lVviofGAdqEWygzdFLd1emt57flF9W1M', name: 'Salmo 119.mp3' },
+    { id: '1CLztJTfu0s8psYxpCVyQ-lti_lZTt6E7', name: 'Salmo 105.mp3' },
+    { id: '1y4ES81ZUYH_ads_Y0R3B2Ww5hHUks88p', name: 'Salmo 107.mp3' },
+    { id: '16v61m1k5tdKTZUBSucQkvhevBvhMuFTp', name: 'Salmo 78.mp3' },
+    { id: '12ra2H5ucpEO7aqCwVoFogJOkp_7rwX5w', name: 'Salmo 117.mp3' },
+    { id: '1AkPfoVZLmNofXx0wHNlpSsIiHSEalEIB', name: 'Salmo 131.mp3' },
+    { id: '1yN8U5g4lODAEhqR7wKwXerPjoT4hNGWh', name: 'Salmo 134.mp3' },
+    { id: '1BOb5GEiBhR9DeK2vLeF5CKn499v-jNG_', name: 'Salmo 121.mp3' },
+    { id: '1i3TK4QZvfh_BN_WpOKrxufZoWfRl-0Iv', name: 'Salmo 128.mp3' },
+    { id: '1ehj7_Oba7RtKaTBz0s3WOkZx0H4e4bYr', name: 'Salmo 133.mp3' },
+    { id: '1L37pSgDdbEJOB71Rh9wU_F1JieX5uS_y', name: 'Salmo 127.mp3' },
+    { id: '1i4VpP7lC7DuXHx7ggpdrESR_yIYyCT_8', name: 'Salmo 100.mp3' },
+    { id: '1LlfKangFdPNuo3Hk32SI1Q12C323YTLy', name: 'Salmo 125.mp3' },
+    { id: '1EBezglx-IfwK602bxrNkbmTADtQdWQZq', name: 'Salmo 114.mp3' },
+    { id: '1fiTdtM7SCT0Bk0HboUv7YLlpOv6YGnCM', name: 'Salmo 93.mp3' },
+    { id: '1h0pejzsa0msag3cPgZFfoHdxRD-VtEYl', name: 'Salmo 113.mp3' },
+    { id: '1kkTNKs332_0e3c06IYHsbFauWMU7URzE', name: 'Salmo 126.mp3' },
+    { id: '1n1gy4l9k6B6l5B_eXeaRHcb9895GOAD7', name: 'Salmo 120.mp3' },
+    { id: '1D1edO6gqvUS9Eqw0Zm8SzrLa07Ac68Rc', name: 'Salmo 123.mp3' },
+    { id: '1gF69TOjPdaSbm3R4OBuVw8glpdASlrFS', name: 'Salmo 150.mp3' },
+    { id: '1_3urJGy0_j66Vmf8y2-2P0k0P87TOGeS', name: 'Salmo 124.mp3' },
+    { id: '1j0_9NwY7KEctjj7fh5sn35sAsUr1HZAl', name: 'Salmo 129.mp3' },
+    { id: '1j2jClOT6fEGMffd2mehNbYmcopmdplGB', name: 'Salmo 122.mp3' },
+    { id: '1BwKCFU7FHI4PW4oBVQqUu1GaiAVID3Eo', name: 'Salmo 137.mp3' },
+    { id: '1FNdZIxM8LO4LFdH0EsThYsElmbC-dhK8', name: 'Salmo 130.mp3' },
+    { id: '16VECEsmwSs8gVuMj2IXpAVOQ1qaFIXyA', name: 'Salmo 142.mp3' },
+    { id: '1tySpNqegPCjV2qI-hBpmavutvFIwDwqi', name: 'Salmo 149.mp3' },
+    { id: '1-uelr59uvtKIK3ctyPzv9jBroFBvWP3v', name: 'Salmo 101.mp3' },
+    { id: '1mVkLs2hZYAEiPkdW8iw4-oF5fh1wsVhg', name: 'Salmo 82.mp3' },
+    { id: '1BTOwj2xHP0j4ppPMqdDYDZXd916cpuhd', name: 'Salmo 112.mp3' },
+    { id: '1Rji9Ybuh2Kyz-1SpMrMRkqmBrrZ7uOml', name: 'Salmo 138.mp3' },
+    { id: '1e-MZeWuu7n9xIu6UulFFA0Je4bKumZ4j', name: 'Salmo 111.mp3' },
+    { id: '13Istud0Ruj7oKHHHbblLznAXpm_W0Zho', name: 'Salmo 146.mp3' },
+    { id: '18FJOdANODiBo-vyYzsem9KwpyHZ3qi3k', name: 'Salmo 87.mp3' },
+    { id: '1EZzacTP20mPeBoEucmZC65ivsVL-Ay5D', name: 'Salmo 110.mp3' },
+    { id: '1t9_AYDKPVjS87wdmxdqQKS4s2AtlPA3F', name: 'Salmo 98.mp3' },
+    { id: '1NxLbScmVCEbGN9rqB3WNmfCeqmTKV3A4', name: 'Salmo 141.mp3' },
+    { id: '1JAqRW0pDm6XgDa8Lhdm2jI-cmqtDxKS8', name: 'Salmo 95.mp3' },
+    { id: '1dvmlynb5yDVHcQxZnMIQ7UrbUHTgisev', name: 'Salmo 99.mp3' },
+    { id: '1-m0huWoY2VZjxcmb0NAE6AuT29zU7oIh', name: 'Salmo 140.mp3' },
+    { id: '1Z22hoepgWHjoCKkd5JUCOViIYRLUuO5F', name: 'Salmo 97.mp3' },
+    { id: '1TWDRwqRDTBRwSSBiMHTw0GdXMwNBo24S', name: 'Salmo 76.mp3' },
+    { id: '1fQe7QcMcoyfymh2k4N682tZVZ5jO02hV', name: 'Salmo 96.mp3' },
+    { id: '1iIRJ121q9sk-uE2PQQL9uxmUEmiIPJsx', name: 'Salmo 143.mp3' },
+    { id: '1EPWnB4wB69Ps53UORwfPbuKiVzQIKEbn', name: 'Salmo 84.mp3' },
+    { id: '1eC6CqwimvrMydZGyXiEhRRV3XhwLkupv', name: 'Salmo 148.mp3' },
+    { id: '17WDUcHHwDgzURL6Iyn7xsdpGjGc86Dn4', name: 'Salmo 147.mp3' },
+    { id: '1i-aJU88g9GveRgRaPhQ43-HhkA_GM_Hn', name: 'Salmo 85.mp3' },
+    { id: '1E9pmHkkFrZRTDXWTihqNIvkRJLrFMh9X', name: 'Salmo 91.mp3' },
+    { id: '1vhLxfYB_JBdn3SFpORdgBoH-hjQHLDnH', name: 'Salmo 115.mp3' },
+    { id: '16btERmT1143oUmmOySL2VhcBXvbwoZYd', name: 'Salmo 132.mp3' },
+    { id: '1uJ47-F3_rdYOc8bJfvUt5VT00mACbVv-', name: 'Salmo 79.mp3' },
+    { id: '1WltDlJIhToRhYWldW1-RD3eioSNj9gTF', name: 'Salmo 86.mp3' },
+    { id: '17W14onAoXbesGGPtJx0yXJ3dpeRgrkoE', name: 'Salmo 108.mp3' },
+    { id: '1FrvFITpG_dqHAPPY3Semh4n1mtVLJtyx', name: 'Salmo 135.mp3' },
+    { id: '1f4C4XMjBQbcQpbpU3TepmSX6u0aA_nZe', name: 'Salmo 144.mp3' },
+    { id: '1tF8kBjxOZp1HocuaslCUSbvKb91mSSVB', name: 'Salmo 81.mp3' },
+    { id: '14DCDLo2BAhhNRL8s5imYYz_0qjcFceta', name: 'Salmo 92.mp3' },
+    { id: '14IOd1hk7lYs1lKbz6El2TjM4M4hB8XOO', name: 'Salmo 83.mp3' },
+    { id: '174hpzizP1WB50v3BMZXQZso1X4FFQbwz', name: 'Salmo 116.mp3' },
+    { id: '1EInNuT1B64D6Htlmko3a-vzRjGFF3NJE', name: 'Salmo 136.mp3' },
+    { id: '1WHHIXhB3uigF3qhnKTXgZApZ_-RqyI4_', name: 'Salmo 145.mp3' },
+    { id: '1PRx7SFua2XBahxRDdoj6KKXycGBoSv_x', name: 'Salmo 77.mp3' },
+    { id: '1K8mvUQsX5pFfHue9yEhSY5rZKLw2nK0e', name: 'Salmo 139.mp3' },
+    { id: '1Wqe3TOyiwlOvX8YhRyaFvTXP76WXQEQh', name: 'Salmo 88.mp3' },
+    { id: '16hXZ9MYTd1O1D2TolT47ELvayhYEwXVi', name: 'Salmo 103.mp3' },
+    { id: '1Me9O1G4v3yzhAm82IG4TmG47zgeToAWJ', name: 'Salmo 94.mp3' },
+    { id: '14EzGTfMkJaGX1Evgj7M61Pz3hKAAlAqP', name: 'Salmo 80.mp3' },
+    { id: '1ngjU6zfhJu37Kt-Osu3AMJac6dtQUCwT', name: 'Salmo 90.mp3' },
+    { id: '1O2jFFifw_qRFoqvVdNW02XjM336xH0r2', name: 'Salmo 118.mp3' },
+    { id: '1Q6PhLbArCELOVSy-No9kKheSoi0mCKmD', name: 'Salmo 102.mp3' },
+    { id: '12BXiVMdhJEzsAdUGd94_njiPMetvKwzl', name: 'Salmo 109.mp3' },
+    { id: '1w9uZG261XxrubGtPDVNKor4mpcE3A5BV', name: 'Salmo 104.mp3' },
+    { id: '1S5ngs9bGc5smwNpaC1BxaaQ3wfGyvNfQ', name: 'Salmo 89.mp3' }
 ];
 
-// ===== TOCAR MENSAGEM ALEATÓRIA =====
-function tocarMensagemAleatoria() {
-    if (listaMensagens.length === 0) {
-        console.log('⚠️ Nenhuma mensagem disponível ainda');
-        io.emit('aviso', { texto: 'Nenhuma mensagem cadastrada ainda' });
+// ===== FUNÇÃO: Selecionar mensagem aleatória =====
+function selecionarMensagemAleatoria() {
+    if (mensagensCache.length === 0) return null;
+    return mensagensCache[Math.floor(Math.random() * mensagensCache.length)];
+}
+
+// ===== FUNÇÃO: Gerar URL de download do Google Drive =====
+function gerarUrlGoogleDrive(fileId) {
+    return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+
+// ===== FUNÇÃO: Tocar mensagem =====
+function tocarMensagem(mensagem, duracao = 60) {
+    if (!mensagem) {
+        console.log('⚠️ Nenhuma mensagem para tocar');
         return;
     }
 
-    const escolhida = listaMensagens[Math.floor(Math.random() * listaMensagens.length)];
-    console.log('🎙️ Tocando mensagem do Cônego Rafael');
+    isPlayingMessage = true;
+    const urlMensagem = gerarUrlGoogleDrive(mensagem.id);
 
-    const urlMensagem = `/proxy-mensagem/${escolhida}`;
+    console.log(`▶️ Tocando mensagem: ${mensagem.name} (${duracao}s)`);
 
     io.emit('play-mensagem', {
         arquivo: urlMensagem,
-        duracao: 60 // Duração padrão de 1 minuto
+        duracao: duracao,
+        nome: mensagem.name
     });
+
+    // Limpar timeout anterior se existir
+    if (messageTimeout) clearTimeout(messageTimeout);
+
+    // Agendar retorno para a programação normal
+    messageTimeout = setTimeout(() => {
+        console.log(`⏹️ Mensagem finalizada, retornando para a programação normal`);
+        isPlayingMessage = false;
+        playStreamPorHorario();
+    }, duracao * 1000);
 }
 
-// ===== HORÁRIOS FIXOS DAS MENSAGENS DIÁRIAS =====
-cron.schedule('0 10 * * *', () => { console.log('📢 [10h] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('40 12 * * *', () => { console.log('📢 [12h40] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('52 13 * * *', () => { console.log('📢 [13h52] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('30 14 * * *', () => { console.log('📢 [14h30] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('50 15 * * *', () => { console.log('📢 [15h50] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('20 16 * * *', () => { console.log('📢 [16h20] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('13 17 * * *', () => { console.log('📢 [17h13] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('55 18 * * *', () => { console.log('📢 [18h55] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('0 20 * * *', () => { console.log('📢 [20h] Mensagem programada'); tocarMensagemAleatoria(); });
-cron.schedule('50 23 * * *', () => { console.log('📢 [23h50] Mensagem programada'); tocarMensagemAleatoria(); });
+// ===== AGENDAMENTOS DE MENSAGENS =====
+// Horários diários
+cron.schedule('0 10 * * *', () => { console.log('📢 [10h] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('40 12 * * *', () => { console.log('📢 [12h40] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('52 13 * * *', () => { console.log('📢 [13h52] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('30 14 * * *', () => { console.log('📢 [14h30] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('50 15 * * *', () => { console.log('📢 [15h50] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('20 16 * * *', () => { console.log('📢 [16h20] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('13 17 * * *', () => { console.log('📢 [17h13] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('55 18 * * *', () => { console.log('📢 [18h55] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('0 20 * * *', () => { console.log('📢 [20h] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
+cron.schedule('50 23 * * *', () => { console.log('📢 [23h50] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); });
 
-// ===== MENSAGENS A CADA 30 MIN NA MADRUGADA (01h-05h) =====
-cron.schedule('0,30 1-4 * * *', () => {
-    console.log('📢 [Madrugada] Mensagem programada');
-    tocarMensagemAleatoria();
-});
+// ===== MENSAGENS NA MADRUGADA (00h10-03h00, a cada 15 minutos) =====
+cron.schedule('10,25,40,55 0 * * *', () => { if (!isPlayingMessage) { console.log('📢 [Madrugada 00h] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); } });
+cron.schedule('10,25,40,55 1 * * *', () => { if (!isPlayingMessage) { console.log('📢 [Madrugada 01h] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); } });
+cron.schedule('10,25,40,55 2 * * *', () => { if (!isPlayingMessage) { console.log('📢 [Madrugada 02h] Mensagem'); tocarMensagem(selecionarMensagemAleatoria(), 60); } });
 
 // ===== PROGRAMAÇÃO AUTOMÁTICA DE STREAMS =====
 function playStreamPorHorario() {
+    if (isPlayingMessage) {
+        console.log('⏭️ Ignorando mudança de stream (tocando mensagem)');
+        return;
+    }
+
     const agora = new Date();
     const hora = agora.getHours();
     const minuto = agora.getMinutes();
@@ -218,64 +219,58 @@ function playStreamPorHorario() {
 
     // Domingo 8h30-9h45: Missa Rádio Marabá
     if (dia === 'domingo' && ((hora === 8 && minuto >= 30) || (hora === 9 && minuto < 45))) {
-        url = '/proxy-stream/maraba'; // Usa o proxy
+        url = 'http://r13.ciclano.io:9033/live';
         descricao = '⛪ Santa Missa Dominical - Rádio Marabá';
     }
     // Sábado 12h50-13h05: Voz do Pastor (Marabá)
     else if (dia === 'sabado' && ((hora === 12 && minuto >= 50) || (hora === 13 && minuto <= 5))) {
-        url = '/proxy-stream/maraba'; // Usa o proxy
+        url = 'http://r13.ciclano.io:9033/live';
         descricao = '📻 Voz do Pastor - Rádio Marabá';
     }
-    // Sábado 19h00-20h30: Missa Rádio Ametista FM (via portal radios.com.br)
+    // Sábado 19h00-20h30: Missa Rádio Ametista FM (aguardando link)
     else if (dia === 'sabado' && ((hora === 19 && minuto >= 0) || (hora === 20 && minuto < 30))) {
-        url = '/proxy-stream/ametista-fm'; // Usa o proxy para o link do portal
+        url = '/proxy-stream/ametista-fm'; // Placeholder - será atualizado com o link real
         descricao = '🙏 Santa Missa de Sábado - Rádio Ametista FM';
-        // A detecção de silêncio será implementada no cliente para este stream
     }
-    // Madrugada Clássica 01h-05h
-    else if (hora >= 1 && hora < 5) { // Das 01:00 (inclusive) até 04:59 (inclusive)
-        url = '/proxy-stream/classica'; // Usa o proxy
+    // Música Clássica: 00h10-03h00
+    else if ((hora === 0 && minuto >= 10) || (hora === 1) || (hora === 2) || (hora === 3 && minuto < 0)) {
+        url = '/proxy-stream/classica';
         descricao = '🎼 Madrugada Clássica Erudita';
     }
     // Restante do tempo: Rádio Voz do Coração Imaculado
     else {
-        url = '/proxy-stream/vozimaculado'; // Usa o proxy
+        url = 'http://r13.ciclano.io:9033/live';
         descricao = '🎵 Rádio Voz do Coração Imaculado';
     }
 
-    // Só emite se o stream mudou ou se é a primeira vez
+    // Só emite se o stream mudou
     if (currentPlayingStream.url !== url || currentPlayingStream.description !== descricao) {
         currentPlayingStream = { url, description: descricao };
         io.emit('play-stream', currentPlayingStream);
-        console.log(`▶️ Trocando para: ${descricao} (${url})`);
+        console.log(`▶️ Stream: ${descricao}`);
     }
 }
 
-// Verificar e atualizar o stream a cada minuto
-cron.schedule('* * * * *', playStreamPorHorario);
+// Verificar stream a cada 30 segundos
+cron.schedule('*/30 * * * * *', playStreamPorHorario);
 
-// Iniciar a programação automática 2 segundos após o servidor ligar
+// Iniciar ao ligar
 setTimeout(() => {
-    console.log('🎵 Iniciando programação automática...');
+    console.log('🎵 Iniciando programação...');
     playStreamPorHorario();
 }, 2000);
 
-// ===== ROTAS DE TESTE (para você testar manualmente) =====
-app.get('/teste-mensagem', (req, res) => {
-    tocarMensagemAleatoria();
-    res.send('✅ Mensagem disparada (60 segundos)');
-});
-
+// ===== ROTAS DE TESTE =====
 app.get('/teste-stream/:tipo', (req, res) => {
     const tipo = req.params.tipo;
     let url = '';
     let descricao = '';
 
     if (tipo === 'maraba') {
-        url = '/proxy-stream/maraba';
+        url = 'http://r13.ciclano.io:9033/live';
         descricao = 'Rádio Marabá';
     } else if (tipo === 'vozimaculado') {
-        url = '/proxy-stream/vozimaculado';
+        url = 'http://r13.ciclano.io:9033/live';
         descricao = 'Rádio Voz do Coração Imaculado';
     } else if (tipo === 'classica') {
         url = '/proxy-stream/classica';
@@ -284,12 +279,22 @@ app.get('/teste-stream/:tipo', (req, res) => {
         url = '/proxy-stream/ametista-fm';
         descricao = 'Rádio Ametista FM';
     } else {
-        return res.status(400).send('Tipo de stream de teste inválido.');
+        return res.status(400).send('Tipo inválido');
     }
 
-    currentPlayingStream = { url, description: descricao }; // Atualiza o stream atual
+    currentPlayingStream = { url, description: descricao };
     io.emit('play-stream', currentPlayingStream);
     res.send(`▶️ Testando: ${descricao}`);
+});
+
+app.get('/teste-mensagem', (req, res) => {
+    const msg = selecionarMensagemAleatoria();
+    if (msg) {
+        tocarMensagem(msg, 60);
+        res.send(`✅ Mensagem: ${msg.name}`);
+    } else {
+        res.send('⚠️ Nenhuma mensagem disponível');
+    }
 });
 
 server.listen(PORT, () => {
@@ -297,12 +302,14 @@ server.listen(PORT, () => {
 ╔════════════════════════════════════════════════════╗
 ║  🎙️  WebRádio Paróquia NSA                       ║
 ║  ✅ Servidor ativo na porta ${PORT}                 ║
-║  📂 Google Drive ID: ${GOOGLE_DRIVE_FOLDER_ID}     ║
-║  ⏰ Mensagens: 10h, 12h40, 13h52, 14h30,         ║
-║              15h50, 16h20, 17h13, 18h55,         ║
-║              20h, 23h50                          ║
-║  🌙 Madrugada (01h-05h): Música Clássica + Mensagens ║
-║  ⛪ Sábado (19h-20h30): Rádio Ametista FM         ║
+║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║
+║  📊 Mensagens carregadas: ${mensagensCache.length}         ║
+║  🎵 Rádio Principal: Voz do Coração Imaculado    ║
+║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)   ║
+║  ⛪ Domingo: Missa Marabá 8h30-9h45             ║
+║  📻 Sábado: Voz do Pastor 12h50-13h05           ║
+║  🙏 Sábado: Missa Ametista 19h00-20h30          ║
+║  ⏰ Mensagens diárias: 10h, 12h40, 13h52...     ║
 ╚════════════════════════════════════════════════════╝
     `);
 });

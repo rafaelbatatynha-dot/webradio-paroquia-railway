@@ -3,306 +3,347 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRádio Paróquia NSA</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+    <title>WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS</title>
+    <meta name="description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta name="keywords" content="WebRádio, Paróquia, Nossa Senhora Auxiliadora, Iraí, RS, Igreja Católica, Cônego Rafael, Missa, Música Clássica, Rádio Católica">
+    <meta name="author" content="Paróquia Nossa Senhora Auxiliadora">
+    <link rel="canonical" href="https://www.paroquiaauxiliadorairai.com.br">
 
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.paroquiaauxiliadorairai.com.br">
+    <meta property="og:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
+    <meta property="og:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta property="og:image" content="https://www.paroquiaauxiliadorairai.com.br/images/og-image.jpg"> <!-- Substitua pela URL da sua imagem -->
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://www.paroquiaauxiliadorairai.com.br">
+    <meta property="twitter:title" content="WebRádio Paróquia Nossa Senhora Auxiliadora – Iraí/RS">
+    <meta property="twitter:description" content="Ouça a WebRádio da Paróquia Nossa Senhora Auxiliadora de Iraí/RS. Programação católica, mensagens do Cônego Rafael e música clássica.">
+    <meta property="twitter:image" content="https://www.paroquiaauxiliadorairai.com.br/images/twitter-image.jpg"> <!-- Substitua pela URL da sua imagem -->
+
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <!-- Tailwind CSS (CDN) -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Font Awesome para ícones (CDN) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        #player {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 30px;
-            padding: 50px 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 600px;
-            width: 100%;
-            text-align: center;
-        }
-
-        h1 {
-            color: #667eea;
-            font-size: 32px;
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
-
-        .subtitle {
-            color: #999;
-            font-size: 14px;
-            margin-bottom: 30px;
-            letter-spacing: 1px;
-        }
-
-        #status {
-            font-size: 18px;
+            background-color: #f0f2f5;
             color: #333;
-            margin: 30px 0;
-            padding: 15px;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 15px;
-            font-weight: 500;
         }
-
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin: 30px 0;
+        .radio-container {
+            background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
-
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 35px;
-            font-size: 16px;
-            border-radius: 50px;
-            cursor: pointer;
+        .play-button, .pause-button {
+            background-color: #4CAF50; /* Verde */
             transition: all 0.3s ease;
-            font-weight: 600;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        .play-button:hover, .pause-button:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
         }
-
-        button:active {
-            transform: translateY(0);
+        .play-button:active, .pause-button:active {
+            transform: scale(0.95);
         }
-
-        #ouvintes {
-            font-size: 16px;
-            color: #666;
-            margin-top: 20px;
-            padding: 10px;
-            background: #f0f0f0;
-            border-radius: 10px;
-            display: inline-block;
+        .play-button:disabled, .pause-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: scale(1);
         }
-
-        .info-box {
-            background: #f9f9f9;
-            border-left: 4px solid #667eea;
-            padding: 20px;
-            margin-top: 30px;
-            border-radius: 10px;
-            text-align: left;
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
-
-        .info-box h3 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 18px;
+        .volume-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            border: none;
         }
-
-        .info-box p {
-            color: #666;
-            line-height: 1.8;
-            font-size: 14px;
+        .message-overlay {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
         }
-
-        .badge {
-            display: inline-block;
-            background: #4caf50;
-            color: white;
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 20px;
-        }
-
-        .footer {
-            margin-top: 30px;
-            color: #999;
-            font-size: 12px;
-        }
-
-        @media (max-width: 600px) {
-            h1 {
-                font-size: 24px;
-            }
-
-            button {
-                padding: 12px 25px;
-                font-size: 14px;
-            }
-
-            #player {
-                padding: 30px 20px;
-            }
+        .message-overlay.active {
+            opacity: 1;
+            visibility: visible;
         }
     </style>
 </head>
-<body>
-    <div id="player">
-        <h1>🎙️ WebRádio Paróquia NSA</h1>
-        <p class="subtitle">Nossa Senhora Auxiliadora — Iraí/RS</p>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-20 px-4">
+    <!-- Container do Player -->
+    <div class="radio-container bg-white rounded-2xl shadow-2xl p-8 sm:p-12 text-center max-w-xl w-full">
+        <h1 class="text-4xl sm:text-5xl font-bold mb-6" style="color: #4CAF50;">🎙️ WebRádio Paróquia NSA</h1>
+        <p class="text-gray-600 mb-8 text-lg">Ouça nossa programação ao vivo</p>
 
-        <div id="status">Carregando...</div>
-
-        <div class="controls">
-            <button id="playBtn">▶️ TOCAR</button>
-            <button id="pauseBtn">⏸️ PAUSAR</button>
-        </div>
-
-        <div id="ouvintes">👥 Ouvintes: 0</div>
-
-        <div class="info-box">
-            <h3>📻 Programação</h3>
-            <p>
-                🌙 Madrugada (01h–05h): Música Clássica + Mensagens a cada 30min<br>
-                📢 Dia (05h–01h): Rádio Voz do Coração Imaculado<br>
-                ⛪ Domingo 8h30–9h45: Santa Missa<br>
-                📻 Sábado 12h50–13h05: Voz do Pastor<br>
-                🔇 Detecção automática de silêncio ativa
+        <!-- Informações do Status -->
+        <div class="radio-info mb-8 bg-gray-50 rounded-xl p-6">
+            <p class="mb-3 text-lg">
+                <span class="font-bold text-gray-700">Status:</span>
+                <span id="radio-status" class="font-semibold text-gray-600">Conectando...</span>
+            </p>
+            <p class="text-lg">
+                <span class="font-bold text-gray-700">Tocando:</span>
+                <span id="radio-description" class="italic text-gray-500">Carregando programação...</span>
             </p>
         </div>
 
-        <span class="badge">✅ Sistema Online</span>
+        <!-- Player de Áudio (oculto) -->
+        <audio id="audio-player" preload="none" crossorigin="anonymous">
+            Seu navegador não suporta reprodução de áudio.
+        </audio>
 
-        <div class="footer">
-            <p>Desenvolvido com ❤️ para a Paróquia</p>
+        <!-- Controles do Player -->
+        <div class="player-controls flex justify-center gap-6 mb-8">
+            <button id="play-button" disabled class="play-button text-white rounded-full w-20 h-20 text-4xl flex items-center justify-center shadow-lg">
+                <i class="fas fa-play"></i>
+            </button>
+            <button id="pause-button" disabled class="pause-button text-white rounded-full w-20 h-20 text-4xl flex items-center justify-center shadow-lg">
+                <i class="fas fa-pause"></i>
+            </button>
+        </div>
+
+        <!-- Controle de Volume -->
+        <div class="volume-control flex items-center justify-center gap-4 mb-8">
+            <span class="text-xl text-gray-700 font-semibold">🔊 Volume:</span>
+            <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.7" class="w-48 h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer volume-slider">
+            <span id="volume-value" class="text-xl text-gray-700 font-semibold w-12">70%</span>
+        </div>
+
+        <!-- Contador de Ouvintes -->
+        <div class="listeners-count bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4">
+            <p class="text-lg text-gray-700">
+                👥 Ouvintes online: <span id="listeners-total" class="font-bold text-2xl" style="color: #4CAF50;">0</span>
+            </p>
         </div>
     </div>
 
-    <audio id="audio" crossorigin="anonymous"></audio>
+    <!-- Overlay para Mensagens Especiais -->
+    <div id="message-overlay" class="message-overlay fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-10 text-center shadow-2xl max-w-md mx-4">
+            <h2 class="text-3xl font-bold mb-4" style="color: #4CAF50;">✨ Mensagem Especial!</h2>
+            <p id="message-text" class="text-xl text-gray-700 mb-6">Uma mensagem do Cônego Rafael está sendo transmitida.</p>
+            <button id="close-message-button" class="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                Entendi
+            </button>
+        </div>
+    </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Script do Player -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
-        const socket = io();
-        const audio = document.getElementById('audio');
-        const playBtn = document.getElementById('playBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const status = document.getElementById('status');
-        const ouvintes = document.getElementById('ouvintes');
+        (function() {
+            console.log('Iniciando WebRádio Player...');
+            console.log('Conectando em: https://webradio-paroquia.onrender.com');
 
-        let detectarSilencio = false;
-        let audioContext = null;
-        let analyser = null;
-        let silencioInicio = null;
-
-        socket.on('play-stream', (data) => {
-            audio.src = data.url;
-            audio.play().catch(err => {
-                console.log('Aguardando interação do usuário');
+            const socket = io('https://webradio-paroquia.onrender.com', {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 10,
+                path: '/socket.io/'
             });
-            status.textContent = data.descricao;
-            detectarSilencio = data.detectarSilencio || false;
 
-            if (detectarSilencio) {
-                console.log('🔇 Detecção de silêncio ATIVADA (60 segundos)');
-                iniciarDeteccaoSilencio();
-            } else {
-                pararDeteccaoSilencio();
-            }
-        });
+            const audioPlayer = document.getElementById('audio-player');
+            const playButton = document.getElementById('play-button');
+            const pauseButton = document.getElementById('pause-button');
+            const volumeSlider = document.getElementById('volume-slider');
+            const volumeValue = document.getElementById('volume-value');
+            const radioStatus = document.getElementById('radio-status');
+            const radioDescription = document.getElementById('radio-description');
+            const listenersTotal = document.getElementById('listeners-total');
+            const messageOverlay = document.getElementById('message-overlay');
+            const messageText = document.getElementById('message-text');
+            const closeMessageButton = document.getElementById('close-message-button');
 
-        socket.on('play-mensagem', (data) => {
-            pararDeteccaoSilencio();
-            audio.pause();
-            audio.src = data.arquivo;
-            audio.play();
-            status.textContent = '🎙️ Mensagem do Cônego Rafael';
+            let currentStreamUrl = '';
+            let currentStreamDescription = '';
+            let isPlayingMessage = false;
+            let userInitiatedPlay = false; // Flag para controlar se o usuário clicou em play
 
-            audio.onended = () => {
-                console.log('✅ Mensagem terminou');
-                socket.emit('mensagem-terminou');
-            };
-        });
+            // Configura volume inicial
+            audioPlayer.volume = volumeSlider.value;
+            volumeValue.textContent = Math.round(volumeSlider.value * 100) + '%';
 
-        socket.on('ouvintes', (data) => {
-            ouvintes.textContent = `👥 Ouvintes: ${data.total}`;
-        });
-
-        playBtn.onclick = () => {
-            audio.play().then(() => {
-                if (detectarSilencio && !audioContext) {
-                    iniciarDeteccaoSilencio();
-                }
-            }).catch(err => {
-                console.error('Erro ao tocar:', err);
-            });
-        };
-
-        pauseBtn.onclick = () => {
-            audio.pause();
-        };
-
-        function iniciarDeteccaoSilencio() {
-            if (!audioContext) {
-                try {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const source = audioContext.createMediaElementSource(audio);
-                    analyser = audioContext.createAnalyser();
-                    source.connect(analyser);
-                    analyser.connect(audioContext.destination);
-                    analyser.fftSize = 256;
-                } catch (err) {
-                    console.error('Erro ao criar AudioContext:', err);
+            // Controle do botão Play
+            playButton.addEventListener('click', () => {
+                console.log('Play clicado. Stream URL:', currentStreamUrl);
+                userInitiatedPlay = true; // Usuário clicou em play
+                if (!currentStreamUrl) {
+                    radioStatus.textContent = 'Aguardando URL do servidor...';
+                    console.log('❌ Sem URL do stream ainda');
                     return;
                 }
-            }
+                console.log('Tentando reproduzir:', currentStreamUrl);
+                audioPlayer.src = currentStreamUrl;
+                audioPlayer.load();
+                audioPlayer.play().then(() => {
+                    console.log('✅ Reprodução iniciada pelo usuário.');
+                    radioStatus.textContent = 'Reproduzindo';
+                    playButton.disabled = true;
+                    pauseButton.disabled = false;
+                }).catch(error => {
+                    console.error('❌ Erro ao tentar reproduzir (Play Button):', error);
+                    radioStatus.textContent = 'Erro ao reproduzir. Tente novamente.';
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
+                });
+            });
 
-            monitorarVolume();
-        }
+            // Controle do botão Pause
+            pauseButton.addEventListener('click', () => {
+                console.log('Pause clicado.');
+                userInitiatedPlay = false; // Usuário pausou
+                audioPlayer.pause();
+                radioStatus.textContent = 'Pausado';
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+            });
 
-        function monitorarVolume() {
-            if (!detectarSilencio || !analyser) return;
+            // Controle do volume
+            volumeSlider.addEventListener('input', () => {
+                audioPlayer.volume = volumeSlider.value;
+                volumeValue.textContent = Math.round(volumeSlider.value * 100) + '%';
+            });
 
-            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            // Eventos do Socket.IO
+            socket.on('connect', () => {
+                console.log('✅ Conectado ao servidor Socket.IO');
+                radioStatus.textContent = 'Conectado';
+                socket.emit('check-stream-status'); // Pede o status atual ao conectar
+            });
 
-            const verificar = () => {
-                if (!detectarSilencio) return;
+            socket.on('disconnect', () => {
+                console.log('❌ Desconectado do servidor Socket.IO');
+                radioStatus.textContent = 'Desconectado';
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+            });
 
-                analyser.getByteFrequencyData(dataArray);
-                const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            socket.on('play-stream', (data) => {
+                console.log('🔄 Recebido comando play-stream:', data);
+                currentStreamUrl = data.url;
+                currentStreamDescription = data.description;
+                radioDescription.textContent = currentStreamDescription;
 
-                if (volume < 5) {
-                    if (!silencioInicio) {
-                        silencioInicio = Date.now();
-                        console.log('🔇 Silêncio detectado, iniciando contagem...');
-                    } else {
-                        const tempoSilencio = (Date.now() - silencioInicio) / 1000;
-
-                        if (tempoSilencio >= 60) {
-                            console.log('🔇 60 segundos de silêncio — avisando servidor');
-                            socket.emit('silencio-detectado');
-                            pararDeteccaoSilencio();
-                            return;
-                        }
-                    }
-                } else {
-                    if (silencioInicio) {
-                        console.log('🔊 Áudio retornou, resetando contador');
-                        silencioInicio = null;
-                    }
+                if (!isPlayingMessage && userInitiatedPlay) { // Só toca se não estiver em mensagem e o usuário já deu play
+                    audioPlayer.src = currentStreamUrl;
+                    audioPlayer.load();
+                    audioPlayer.play().then(() => {
+                        radioStatus.textContent = 'Reproduzindo';
+                        playButton.disabled = true;
+                        pauseButton.disabled = false;
+                    }).catch(error => {
+                        console.error('❌ Erro ao reproduzir stream (Socket.IO):', error);
+                        radioStatus.textContent = 'Erro no stream. Tente novamente.';
+                        playButton.disabled = false;
+                        pauseButton.disabled = true;
+                    });
+                } else if (!userInitiatedPlay) {
+                    radioStatus.textContent = 'Pausado (Clique Play)';
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
                 }
+            });
 
-                requestAnimationFrame(verificar);
-            };
+            socket.on('play-mensagem', (data) => {
+                console.log('📢 Recebido comando play-mensagem:', data);
+                isPlayingMessage = true;
+                messageText.textContent = `Uma mensagem do Cônego Rafael (${data.nome}) está sendo transmitida.`;
+                messageOverlay.classList.add('active'); // Mostra o overlay
 
-            verificar();
-        }
+                audioPlayer.src = data.arquivo;
+                audioPlayer.load();
+                audioPlayer.play().then(() => {
+                    radioStatus.textContent = 'Mensagem Especial';
+                    radioDescription.textContent = data.nome;
+                    playButton.disabled = true; // Desabilita play/pause durante a mensagem
+                    pauseButton.disabled = true;
+                }).catch(error => {
+                    console.error('❌ Erro ao reproduzir mensagem:', error);
+                    radioStatus.textContent = 'Erro na mensagem.';
+                    messageOverlay.classList.remove('active'); // Esconde o overlay em caso de erro
+                    isPlayingMessage = false;
+                    socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
+                });
+            });
 
-        function pararDeteccaoSilencio() {
-            detectarSilencio = false;
-            silencioInicio = null;
-        }
+            // Evento para fechar o overlay da mensagem (opcional, a mensagem termina sozinha)
+            closeMessageButton.addEventListener('click', () => {
+                messageOverlay.classList.remove('active');
+            });
+
+            // Eventos do áudio
+            audioPlayer.addEventListener('error', (e) => {
+                console.error('❌ Erro no áudio:', audioPlayer.error);
+                let errorMsg = 'Erro desconhecido';
+                if (audioPlayer.error) {
+                    const errorCodes = ['', 'Abortado', 'Erro de rede', 'Erro de decodificação', 'Formato não suportado'];
+                    errorMsg = errorCodes[audioPlayer.error.code] || 'Erro ' + audioPlayer.error.code;
+                }
+                radioStatus.textContent = errorMsg;
+                playButton.disabled = false;
+                pauseButton.disabled = true;
+                isPlayingMessage = false; // Garante que a flag seja resetada
+                messageOverlay.classList.remove('active'); // Esconde o overlay
+                socket.emit('check-stream-status'); // Pede para o servidor retornar ao stream principal
+            });
+
+            audioPlayer.addEventListener('canplay', () => {
+                console.log('✅ Áudio pronto');
+            });
+
+            audioPlayer.addEventListener('playing', () => {
+                console.log('▶️ Reproduzindo');
+                if (!isPlayingMessage) { // Só atualiza botões se não for mensagem
+                    playButton.disabled = true;
+                    pauseButton.disabled = false;
+                    radioStatus.textContent = 'Reproduzindo';
+                }
+            });
+
+            audioPlayer.addEventListener('pause', () => {
+                console.log('⏸️ Pausado');
+                if (!isPlayingMessage) { // Só atualiza botões se não for mensagem
+                    playButton.disabled = false;
+                    pauseButton.disabled = true;
+                    radioStatus.textContent = 'Pausado';
+                }
+            });
+
+            audioPlayer.addEventListener('waiting', () => {
+                console.log('⏳ Buffering...');
+                radioStatus.textContent = 'Carregando...';
+            });
+
+            // Quando a mensagem termina, o servidor já envia um 'play-stream'
+            // O player vai reagir a esse 'play-stream' e retomar a rádio principal.
+            // A flag isPlayingMessage é resetada pelo servidor.
+
+            console.log('✅ WebRádio Player inicializado');
+        })();
     </script>
 </body>
 </html>
