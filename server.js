@@ -41,8 +41,6 @@ const PORT = process.env.PORT || 3000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
 // ===== SUAS URLs DOS STREAMS DE RÁDIO (NÃO ALTERADAS!) =====
-// Rafael, estas são as URLs EXATAS que você me forneceu.
-// Elas foram mantidas aqui sem nenhuma alteração.
 const RADIO_VOZ_IMACULADO_URL = 'http://r13.ciclano.io:9033/live'; // Rádio Voz do Coração Imaculado
 const RADIO_MARABA_URL = 'https://streaming.speedrs.com.br/radio/8010/maraba'; // Rádio Marabá
 const RADIO_CLASSICA_URL = 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128'; // Swiss Classic Radio
@@ -57,27 +55,21 @@ let currentPlayingStream = {
 };
 let isPlayingMessage = false;
 let messageTimeout = null;
-let ffmpegProcess = null; // Variável para armazenar o processo FFmpeg
+let ffmpegProcess = null; // Variável para armazenar o processo FFmpeg do stream principal
+let ffprobeCache = {}; // Cache para armazenar a duração das mensagens
 
-// Função para iniciar o stream FFmpeg
-function startFfmpegStream(sourceUrl, res) {
-    // Se já houver um processo FFmpeg rodando, encerra-o primeiro
-    if (ffmpegProcess) {
-        console.log('🔄 Encerrando processo FFmpeg anterior...');
+// Função para iniciar o stream FFmpeg (para rádios ou mensagens)
+function startFfmpegStream(sourceUrl, res, isMessage = false) {
+    // Se for um stream principal e já houver um processo FFmpeg rodando, encerra-o primeiro
+    if (!isMessage && ffmpegProcess) {
+        console.log('🔄 Encerrando processo FFmpeg anterior do stream principal...');
         ffmpegProcess.kill('SIGKILL'); // Força o encerramento
         ffmpegProcess = null;
     }
 
-    console.log(`▶️ Iniciando FFmpeg para stream: ${sourceUrl}`);
-    // O FFmpeg vai ler da sourceUrl e enviar o output para o pipe (stdout)
-    // -i ${sourceUrl}: Define a URL de entrada
-    // -c:a libmp3lame: Define o codec de áudio para MP3
-    // -q:a 2: Define a qualidade do áudio (2 é uma boa qualidade para MP3)
-    // -f mp3: Define o formato de saída como MP3
-    // -ar 44100: Define a taxa de amostragem de áudio para 44.1 kHz
-    // -ac 2: Define 2 canais de áudio (estéreo)
-    // pipe:1: Envia a saída para o stdout (pipe)
-    ffmpegProcess = spawn('ffmpeg', [
+    console.log(`▶️ Iniciando FFmpeg para ${isMessage ? 'mensagem' : 'stream'}: ${sourceUrl}`);
+
+    const ffmpegArgs = [
         '-i', sourceUrl,
         '-c:a', 'libmp3lame',
         '-q:a', '2',
@@ -85,68 +77,107 @@ function startFfmpegStream(sourceUrl, res) {
         '-ar', '44100',
         '-ac', '2',
         'pipe:1'
-    ]);
+    ];
 
-    // Quando o FFmpeg tem dados, ele os envia para a resposta HTTP
-    ffmpegProcess.stdout.pipe(res);
+    const currentFfmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
-    // Lida com erros do FFmpeg
-    ffmpegProcess.stderr.on('data', (data) => {
-        console.error(`❌ FFmpeg stderr: ${data}`);
+    // Se for o stream principal, armazena a referência
+    if (!isMessage) {
+        ffmpegProcess = currentFfmpegProcess;
+    }
+
+    currentFfmpegProcess.stdout.pipe(res);
+
+    currentFfmpegProcess.stderr.on('data', (data) => {
+        console.error(`❌ FFmpeg stderr (${isMessage ? 'mensagem' : 'stream'}): ${data}`);
     });
 
-    // Lida com o fechamento do processo FFmpeg
-    ffmpegProcess.on('close', (code) => {
+    currentFfmpegProcess.on('close', (code) => {
         if (code !== 0) {
-            console.error(`❌ FFmpeg process exited with code ${code}`);
+            console.error(`❌ FFmpeg process exited with code ${code} for ${isMessage ? 'message' : 'stream'}: ${sourceUrl}`);
         } else {
-            console.log('⏹️ FFmpeg process closed gracefully.');
+            console.log(`⏹️ FFmpeg process closed gracefully for ${isMessage ? 'message' : 'stream'}: ${sourceUrl}`);
         }
-        ffmpegProcess = null; // Limpa a referência
+        if (!isMessage && currentFfmpegProcess === ffmpegProcess) {
+            ffmpegProcess = null; // Limpa a referência apenas se for o processo principal atual
+        }
     });
 
-    // Lida com erros de spawn (ex: ffmpeg não encontrado)
-    ffmpegProcess.on('error', (err) => {
-        console.error('❌ Failed to start FFmpeg process:', err);
-        res.status(500).send('Erro ao iniciar o stream de rádio.');
-        ffmpegProcess = null;
-    });
-
-    // Quando a conexão HTTP com o cliente é fechada, encerra o FFmpeg
-    res.on('close', () => {
-        if (ffmpegProcess) {
-            console.log('🔌 Cliente desconectado, encerrando FFmpeg...');
-            ffmpegProcess.kill('SIGKILL');
+    currentFfmpegProcess.on('error', (err) => {
+        console.error(`❌ Failed to start FFmpeg process for ${isMessage ? 'message' : 'stream'}:`, err);
+        if (!res.headersSent) {
+            res.status(500).send(`Erro ao iniciar o stream de ${isMessage ? 'mensagem' : 'rádio'}.`);
+        }
+        if (!isMessage && currentFfmpegProcess === ffmpegProcess) {
             ffmpegProcess = null;
         }
     });
 }
 
-// ===== ROTA PRINCIPAL PARA O STREAM DE ÁUDIO =====
-// Esta rota será acessada pelo <audio src="/stream"> no seu HTML
+// Rota para o stream principal (rádios)
 app.get('/stream', (req, res) => {
-    console.log('🎧 Requisição de stream recebida.');
-    res.writeHead(200, {
+    res.set({
         'Content-Type': 'audio/mpeg',
         'Connection': 'keep-alive',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
     });
-
-    // Inicia o FFmpeg com a URL do stream principal atual
-    // A URL real do stream será determinada pela lógica de agendamento
-    // e armazenada em `currentPlayingStream.url`
-    if (currentPlayingStream.url) {
-        startFfmpegStream(currentPlayingStream.url, res);
-    } else {
-        console.warn('⚠️ Nenhuma URL de stream principal definida para FFmpeg.');
-        res.status(404).send('Nenhum stream de rádio ativo.');
-    }
+    startFfmpegStream(currentPlayingStream.url, res, false);
 });
 
-// ===== LISTA COMPLETA DE MENSAGENS DO GOOGLE DRIVE (CORRIGIDA) =====
-// Esta lista é um cache das suas mensagens, com as duplicações removidas.
+// Rota para o stream de mensagens do Google Drive
+app.get('/message-stream/:id', (req, res) => {
+    const messageId = req.params.id;
+    const googleDriveUrl = `https://docs.google.com/uc?export=download&id=${messageId}`;
+    res.set({
+        'Content-Type': 'audio/mpeg',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
+    startFfmpegStream(googleDriveUrl, res, true);
+});
+
+// Função para obter a duração de um MP3 via ffprobe
+async function getAudioDuration(url) {
+    if (ffprobeCache[url]) {
+        return ffprobeCache[url];
+    }
+
+    return new Promise((resolve, reject) => {
+        const ffprobe = spawn('ffprobe', [
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            url
+        ]);
+
+        let duration = '';
+        ffprobe.stdout.on('data', (data) => {
+            duration += data.toString();
+        });
+
+        ffprobe.on('close', (code) => {
+            if (code === 0 && duration) {
+                const seconds = parseFloat(duration);
+                ffprobeCache[url] = seconds; // Cache a duração
+                resolve(seconds);
+            } else {
+                console.error(`❌ ffprobe failed for ${url} with code ${code}. Duration: ${duration}`);
+                resolve(60); // Retorna 60 segundos como fallback
+            }
+        });
+
+        ffprobe.on('error', (err) => {
+            console.error(`❌ Failed to spawn ffprobe process for ${url}:`, err);
+            resolve(60); // Retorna 60 segundos como fallback
+        });
+    });
+}
+
+// ===== LISTA DE MENSAGENS DO GOOGLE DRIVE (SEM DUPLICAÇÕES) =====
 const mensagensCache = [
     { id: '1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu', name: 'msg_010.mp3' },
     { id: '1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH', name: 'msg_009.mp3' },
@@ -211,34 +242,33 @@ const mensagensCache = [
 ];
 
 // Função para selecionar uma mensagem aleatória
-function selecionarMensagemAleatoria() {
-    if (mensagensCache.length === 0) {
-        console.warn('⚠️ Cache de mensagens vazio. Nenhuma mensagem para tocar.');
-        return null;
-    }
+function getRandomMessage() {
     const randomIndex = Math.floor(Math.random() * mensagensCache.length);
     return mensagensCache[randomIndex];
 }
 
-// Função para obter a URL de download direto do Google Drive
-function getGoogleDriveDirectLink(fileId) {
-    return `https://docs.google.com/uc?export=download&id=${fileId}`;
-}
+// Variável para armazenar o stream principal antes de uma mensagem
+let previousMainStream = { url: RADIO_VOZ_IMACULADO_URL, description: 'Voz do Coração Imaculado' };
 
 // Função para tocar uma mensagem
-function tocarMensagem(mensagem, durationSeconds) {
+async function playMessage(message) {
     if (isPlayingMessage) {
-        console.log('⏭️ Ignorando nova mensagem (já tocando uma).');
+        console.log('⏭️ Ignorando nova mensagem (já tocando uma)');
         return;
     }
 
     isPlayingMessage = true;
-    console.log(`▶️ Tocando mensagem: ${mensagem.name} (${durationSeconds}s)`);
-    io.emit('play-mensagem', {
-        url: getGoogleDriveDirectLink(mensagem.id),
-        description: mensagem.name,
-        duration: durationSeconds
-    });
+    previousMainStream = { ...currentPlayingStream }; // Salva o stream atual
+
+    const messageGoogleDriveUrl = `https://docs.google.com/uc?export=download&id=${message.id}`;
+    const messageProxyUrl = `/message-stream/${message.id}`; // URL do proxy no seu servidor
+
+    console.log(`📢 Tocando mensagem: ${message.name}`);
+    io.emit('play-mensagem', { name: message.name, url: messageProxyUrl });
+
+    // Obter a duração da mensagem
+    const durationSeconds = await getAudioDuration(messageGoogleDriveUrl);
+    console.log(`⏱️ Duração da mensagem ${message.name}: ${durationSeconds} segundos`);
 
     // Limpa qualquer timeout anterior para evitar conflitos
     if (messageTimeout) {
@@ -246,152 +276,114 @@ function tocarMensagem(mensagem, durationSeconds) {
     }
 
     messageTimeout = setTimeout(() => {
-        console.log('⏹️ Mensagem finalizada, retornando para a programação normal');
+        console.log('⏹️ Mensagem finalizada (timeout), retornando para a programação normal');
         isPlayingMessage = false;
-        io.emit('stop-mensagem');
-        checkStreamStatus(); // Verifica e retorna ao stream principal
-    }, durationSeconds * 1000);
+        io.emit('stop-mensagem'); // Informa o cliente para parar a mensagem
+        // Retorna ao stream principal que estava tocando antes da mensagem
+        io.emit('play-stream', previousMainStream);
+    }, durationSeconds * 1000); // Converte segundos para milissegundos
 }
 
-// Função para verificar e atualizar o stream principal
-function checkStreamStatus() {
-    if (isPlayingMessage) {
-        console.log('⏭️ Ignorando mudança de stream (tocando mensagem)');
-        return;
-    }
-
+// Função para definir o stream principal com base na programação
+function setMainStream() {
     const now = new Date();
-    const hora = now.getHours();
-    const minuto = now.getMinutes();
-    const diaSemana = now.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+    const day = now.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+    const hour = now.getHours();
+    const minute = now.getMinutes();
 
-    let url = '';
-    let descricao = '';
-    let dia = '';
+    // Lógica de agendamento de mensagens (prioridade absoluta)
+    const messageSchedule = [
+        // Madrugada Clássica (00:10 a 03:00) - Mensagens a cada 15 minutos
+        { hour: [0, 1, 2], minute: [10, 25, 40, 55], description: '[Madrugada Clássica] Mensagem' },
+        // Mensagens diárias
+        { hour: 9, minute: 55, description: '[Manhã] Mensagem' },
+        { hour: 12, minute: 40, description: '[Almoço] Mensagem' },
+        { hour: 13, minute: 52, description: '[Tarde] Mensagem' },
+        { hour: 14, minute: 30, description: '[Tarde] Mensagem' },
+        { hour: 15, minute: 50, description: '[Tarde] Mensagem' },
+        { hour: 16, minute: 20, description: '[Tarde] Mensagem' },
+        { hour: 17, minute: 13, description: '[Tarde] Mensagem' },
+        { hour: 18, minute: 55, description: '[Noite] Mensagem' },
+        { hour: 19, minute: 55, description: '[Noite] Mensagem' },
+        { hour: 23, minute: 50, description: '[Noite] Mensagem' }
+    ];
 
-    switch (diaSemana) {
-        case 0: dia = 'domingo'; break;
-        case 1: dia = 'segunda'; break;
-        case 2: dia = 'terca'; break;
-        case 3: dia = 'quarta'; break;
-        case 4: dia = 'quinta'; break;
-        case 5: dia = 'sexta'; break;
-        case 6: dia = 'sabado'; break;
-    }
+    for (const schedule of messageSchedule) {
+        const isHourMatch = Array.isArray(schedule.hour) ? schedule.hour.includes(hour) : schedule.hour === hour;
+        const isMinuteMatch = Array.isArray(schedule.minute) ? schedule.minute.includes(minute) : schedule.minute === minute;
 
-    // Lógica de agendamento
-    // Domingo 8h30-9h45: Missa Rádio Marabá
-    if (dia === 'domingo' && ((hora === 8 && minuto >= 30) || (hora === 9 && minuto < 45))) {
-        url = RADIO_MARABA_URL;
-        descricao = '⛪ Santa Missa Dominical - Rádio Marabá';
-    }
-    // Sábado 12h50-13h05: Voz do Pastor (Marabá)
-    else if (dia === 'sabado' && ((hora === 12 && minuto >= 50) || (hora === 13 && minuto < 5))) {
-        url = RADIO_MARABA_URL;
-        descricao = '🎙️ Voz do Pastor - Rádio Marabá';
-    }
-    // Madrugada Clássica Erudita (00h10 - 03h00)
-    else if ((hora === 0 && minuto >= 10) || (hora >= 1 && hora < 3)) {
-        url = RADIO_CLASSICA_URL;
-        descricao = '🎼 Madrugada Clássica Erudita';
-        // Toca mensagem a cada 15 minutos durante a madrugada clássica
-        if (minuto % 15 === 0 && minuto !== 0) { // Evita tocar no minuto 00:00
-            const msg = selecionarMensagemAleatoria();
-            if (msg) tocarMensagem(msg, 60); // Mensagem de 60 segundos
+        if (isHourMatch && isMinuteMatch) {
+            if (!isPlayingMessage) { // Só toca se não estiver já tocando uma mensagem
+                playMessage(getRandomMessage());
+            }
+            return; // Mensagem tem prioridade, não muda o stream principal agora
         }
     }
-    // Programação Principal: Rádio Voz do Coração Imaculado
-    else {
-        url = RADIO_VOZ_IMACULADO_URL;
-        descricao = '🎵 Rádio Voz do Coração Imaculado';
+
+    // Se não há mensagem agendada, define o stream principal
+    if (isPlayingMessage) {
+        console.log('⏭️ Ignorando mudança de stream (tocando mensagem)');
+        return; // Não muda o stream principal se uma mensagem estiver tocando
     }
 
-    // Verifica se o stream mudou
-    if (currentPlayingStream.url !== url) {
-        currentPlayingStream = { url, description: descricao };
-        console.log(`▶️ Stream: ${descricao}`);
-        io.emit('play-stream', currentPlayingStream); // Notifica os clientes sobre a mudança
-    } else if (currentPlayingStream.description !== descricao) {
-        // Atualiza apenas a descrição se a URL for a mesma (ex: para mensagens)
-        currentPlayingStream.description = descricao;
-        io.emit('update-description', currentPlayingStream.description);
+    let newStreamUrl = RADIO_VOZ_IMACULADO_URL;
+    let newStreamDescription = 'Voz do Coração Imaculado';
+
+    // Domingo: Missa Marabá 8h30-9h45
+    if (day === 0 && hour === 8 && minute >= 30 || (day === 0 && hour === 9 && minute < 45)) {
+        newStreamUrl = RADIO_MARABA_URL;
+        newStreamDescription = 'Rádio Marabá (Missa)';
+    }
+    // Sábado: Voz do Pastor 12h50-13h05
+    else if (day === 6 && hour === 12 && minute >= 50 || (day === 6 && hour === 13 && minute < 5)) {
+        newStreamUrl = RADIO_VOZ_IMACULADO_URL; // Mantém Voz do Imaculado, mas com descrição específica
+        newStreamDescription = 'Voz do Coração Imaculado (Voz do Pastor)';
+    }
+    // Madrugada Clássica 00h10-03h00
+    else if (hour >= 0 && hour < 3 && minute >= 10 || (hour === 3 && minute === 0)) {
+        newStreamUrl = RADIO_CLASSICA_URL;
+        newStreamDescription = 'Madrugada Clássica';
+    }
+    // Default: Voz do Coração Imaculado
+    else {
+        newStreamUrl = RADIO_VOZ_IMACULADO_URL;
+        newStreamDescription = 'Voz do Coração Imaculado';
+    }
+
+    // Só emite a mudança se o stream realmente mudou
+    if (currentPlayingStream.url !== newStreamUrl) {
+        currentPlayingStream.url = newStreamUrl;
+        currentPlayingStream.description = newStreamDescription;
+        io.emit('play-stream', currentPlayingStream);
+        console.log(`▶️ Stream: ${currentPlayingStream.description}`);
+    } else {
+        // Se o stream não mudou, apenas atualiza a descrição se necessário
+        if (currentPlayingStream.description !== newStreamDescription) {
+            currentPlayingStream.description = newStreamDescription;
+            io.emit('update-stream-info', currentPlayingStream); // Nova emissão para atualizar só a info
+        }
     }
 }
 
-// Agendamento de mensagens diárias
-cron.schedule('0 10 * * *', () => { // 10:00 AM
-    console.log('📢 [10h00] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
+// Inicializa a programação ao iniciar o servidor
+setMainStream();
 
-cron.schedule('40 12 * * *', () => { // 12:40 PM
-    console.log('📢 [12h40] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
+// Atualiza a programação a cada minuto
+cron.schedule('* * * * *', setMainStream);
 
-cron.schedule('52 13 * * *', () => { // 13:52 PM
-    console.log('📢 [13h52] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
-
-cron.schedule('0 15 * * *', () => { // 15:00 PM
-    console.log('📢 [15h00] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
-
-cron.schedule('0 18 * * *', () => { // 18:00 PM
-    console.log('📢 [18h00] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
-
-cron.schedule('0 20 * * *', () => { // 20:00 PM
-    console.log('📢 [20h00] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
-
-cron.schedule('0 22 * * *', () => { // 22:00 PM
-    console.log('📢 [22h00] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) tocarMensagem(msg, 60);
-}, { timezone: "America/Sao_Paulo" });
-
-// Agendamento para verificar o status do stream a cada minuto
-cron.schedule('* * * * *', () => {
-    checkStreamStatus();
-}, { timezone: "America/Sao_Paulo" });
-
-// Endpoint para testar o agendamento de mensagens
-app.get('/tocar-mensagem-teste', (req, res) => {
-    console.log('📢 [Teste] Mensagem');
-    const msg = selecionarMensagemAleatoria();
-    if (msg) {
-        tocarMensagem(msg, 60);
-        res.send(`✅ Mensagem: ${msg.name}`);
-    } else {
-        res.send('⚠️ Nenhuma mensagem disponível');
-    }
-});
-
+// ===== INICIANDO O SERVIDOR =====
 server.listen(PORT, () => {
     console.log(`
-╔════════════════════════════════════════════════════╗
-║  🎙️  WebRádio Paróquia NSA                       ║
-║  ✅ Servidor ativo na porta ${PORT}                 ║
+╔═════════════════════════════════════════════════════╗
+║                                                     ║
+║  📡 Servidor iniciado com sucesso na porta ${PORT}  ║
 ║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║
 ║  📊 Mensagens carregadas: ${mensagensCache.length}         ║
-║  🎵 Rádio Principal: Voz do Coração Imaculado    ║
-║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)   ║
-║  ⛪ Domingo: Missa Marabá 8h30-9h45             ║
-║  📻 Sábado: Voz do Pastor 12h50-13h05           ║
-║  ⏰ Mensagens diárias: 10h, 12h40, 13h52...     ║
-╚════════════════════════════════════════════════════╝
-    `);
-    // Inicializa o stream principal ao iniciar o servidor
-    checkStreamStatus();
+║  🎵 Rádio Principal: ${currentPlayingStream.description}  ║
+║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)       ║
+║  ⛪ Domingo: Missa Marabá 8h30-9h45                 ║
+║  📻 Sábado: Voz do Pastor 12h50-13h05               ║
+║  ⏰ Mensagens diárias: 10h, 12h40, 13h52...         ║
+╚═════════════════════════════════════════════════════╝
+`);
 });
