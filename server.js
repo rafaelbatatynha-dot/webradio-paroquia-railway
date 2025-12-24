@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const cron = require('node-cron');
 const { google } = require('googleapis');
+const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 
@@ -37,7 +38,7 @@ const STREAMS = {
         url: 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128',
         description: 'Clássica'
     },
-    'ametista': { // Nova entrada para a Rádio Ametista FM
+    'ametista': {
         url: 'https://www.radios.com.br/aovivo/radio-ametista-885-fm/16128',
         description: 'Ametista FM'
     }
@@ -133,20 +134,17 @@ async function playSequentialMessages() {
         const message = messages[i];
         console.log(`📢 Tocando mensagem ${i + 1}/${messages.length}: ${message.name}`);
 
-        // Emite para todos os clientes
         io.emit('play-mensagem', {
             name: message.name,
             url: message.url
         });
 
-        // Aguarda a duração estimada da mensagem (ajuste conforme necessário)
         await new Promise(resolve => setTimeout(resolve, 30000)); // 30 segundos por mensagem
     }
 
     console.log('⏹️ Bloco de mensagens finalizado.');
     isPlayingMessage = false;
 
-    // Retoma o stream principal
     io.emit('stop-mensagem');
     io.emit('play-stream', {
         url: currentStream.url,
@@ -166,10 +164,8 @@ async function playMessageEvery30Minutes() {
         url: randomMessage.url
     });
 
-    // Aguarda 30 segundos para a mensagem tocar
     await new Promise(resolve => setTimeout(resolve, 30000));
 
-    // Retoma o stream
     io.emit('stop-mensagem');
     io.emit('play-stream', {
         url: currentStream.url,
@@ -266,10 +262,10 @@ function setupSchedule() {
         });
     });
 
-    // Sábado 19:00 - Missa Ametista (usando a nova entrada 'ametista')
+    // Sábado 19:00 - Missa Ametista
     cron.schedule('0 19 * * 6', () => {
         console.log('⛪ Sábado 19:00 - Iniciando Missa Ametista');
-        currentStream = STREAMS.ametista; // Usando a nova entrada 'ametista'
+        currentStream = STREAMS.ametista;
         io.emit('play-stream', {
             url: currentStream.url,
             description: 'Missa Ametista'
@@ -289,9 +285,36 @@ function setupSchedule() {
     console.log('✅ Agendamento configurado com sucesso');
 }
 
-// ===== ROTA PARA STREAM =====
-app.get('/stream', (req, res) => {
-    res.redirect(currentStream.url);
+// ===== ROTA PARA PROXY DO STREAM (em vez de redirect) =====
+app.get('/stream', async (req, res) => {
+    try {
+        console.log(`🔗 Proxying stream: ${currentStream.url}`);
+
+        const response = await axios.get(currentStream.url, {
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            timeout: 10000
+        });
+
+        // Define headers corretos para áudio
+        res.setHeader('Content-Type', response.headers['content-type'] || 'audio/mpeg');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        response.data.pipe(res);
+
+        response.data.on('error', (error) => {
+            console.error('❌ Erro ao fazer proxy do stream:', error.message);
+            res.status(500).send('Erro ao carregar stream');
+        });
+
+    } catch (error) {
+        console.error('❌ Erro na rota /stream:', error.message);
+        res.status(500).send('Erro ao carregar stream');
+    }
 });
 
 // ===== SOCKET.IO =====
@@ -299,9 +322,8 @@ io.on('connection', (socket) => {
     console.log(`✅ Cliente conectado: ${socket.id}`);
     clients.push(socket.id);
 
-    // Emite o stream atual ao conectar
     socket.emit('play-stream', {
-        url: currentStream.url,
+        url: '/stream',
         description: currentStream.description
     });
 
@@ -312,7 +334,7 @@ io.on('connection', (socket) => {
 
     socket.on('get-current-stream', () => {
         socket.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -321,13 +343,9 @@ io.on('connection', (socket) => {
 // ===== INICIALIZAÇÃO DO SERVIDOR =====
 async function startServer() {
     try {
-        // Inicializa Google Drive
         await initializeGoogleDrive();
-
-        // Configura agendamento
         setupSchedule();
 
-        // Inicia o servidor
         server.listen(PORT, () => {
             console.log(`\n╔═════════════════════════════════════════════════════╗`);
             console.log(`║                                                     ║`);
