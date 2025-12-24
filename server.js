@@ -5,6 +5,10 @@ const cron = require('node-cron');
 const axios = require('axios');
 const cors = require('cors');
 const { spawn } = require('child_process'); // Para rodar comandos externos como ffmpeg
+const { google } = require('googleapis'); // Para Google Drive API
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
 
 // ===== CONFIGURAÇÃO DO CORS =====
@@ -40,10 +44,11 @@ const io = socketIo(server, {
 const PORT = process.env.PORT || 3000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
-// ===== SUAS URLs DOS STREAMS DE RÁDIO (NÃO ALTERADAS!) =====
+// ===== SUAS URLs DOS STREAMS DE RÁDIO =====
 const RADIO_VOZ_IMACULADO_URL = 'http://r13.ciclano.io:9033/live'; // Rádio Voz do Coração Imaculado
 const RADIO_MARABA_URL = 'https://streaming.speedrs.com.br/radio/8010/maraba'; // Rádio Marabá
 const RADIO_CLASSICA_URL = 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128'; // Swiss Classic Radio
+const RADIO_AMETISTA_FM_URL = 'https://www.radios.com.br/aovivo/radio-ametista-885-fm/16128'; // Rádio Ametista FM
 // ==============================================================================
 
 app.use(express.static('public'));
@@ -62,6 +67,81 @@ let messageTimeout = null;
 let ffmpegProcess = null; // Variável para armazenar o processo FFmpeg do stream principal
 let ffprobeCache = {}; // Cache para armazenar a duração das mensagens
 
+// --- INÍCIO DO BLOCO DE CÓDIGO PARA GOOGLE DRIVE ---
+
+let googleDriveAuth;
+let drive;
+let messageFilesCache = []; // Esta lista será preenchida dinamicamente!
+
+async function setupGoogleDrive() {
+    try {
+        let credentials;
+        if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+            credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+            console.log('✅ Credenciais do Google Drive carregadas da variável de ambiente.');
+        } else {
+            console.error('⚠️ Variável de ambiente GOOGLE_APPLICATION_CREDENTIALS_JSON não encontrada.');
+            console.error('   Por favor, configure-a no Render com o conteúdo do seu arquivo JSON de credenciais.');
+            process.exit(1);
+        }
+
+        googleDriveAuth = new google.auth.JWT(
+            credentials.client_email,
+            null,
+            credentials.private_key,
+            ['https://www.googleapis.com/auth/drive.readonly'] // Apenas leitura
+        );
+
+        await googleDriveAuth.authorize();
+        drive = google.drive({ version: 'v3', auth: googleDriveAuth });
+        console.log('✅ Autenticação com Google Drive bem-sucedida.');
+
+    } catch (error) {
+        console.error('❌ Erro ao configurar Google Drive:', error.message);
+        process.exit(1);
+    }
+}
+
+async function fetchMessageFilesFromDrive() {
+    if (!drive) {
+        console.warn('Google Drive não autenticado. Tentando configurar...');
+        await setupGoogleDrive();
+        if (!drive) {
+            console.error('Não foi possível configurar o Google Drive. Pulando a busca de arquivos.');
+            return;
+        }
+    }
+
+    try {
+        console.log(`🔄 Buscando arquivos de mensagem na pasta do Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}`);
+        const res = await drive.files.list({
+            q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed = false`,
+            fields: 'files(id, name, webContentLink)',
+            pageSize: 1000, // Aumenta o limite para garantir que todos os arquivos sejam pegos
+        });
+
+        const files = res.data.files;
+        if (files.length) {
+            messageFilesCache = files.map(file => ({
+                id: file.id,
+                name: file.name,
+                url: file.webContentLink, // URL para download direto
+            }));
+            console.log(`✅ ${messageFilesCache.length} arquivos de mensagem carregados do Google Drive.`);
+        } else {
+            console.log('Nenhum arquivo de mensagem encontrado na pasta do Google Drive.');
+        }
+    } catch (err) {
+        console.error('❌ Erro ao buscar arquivos do Google Drive:', err.message);
+        if (messageFilesCache.length === 0) {
+            console.warn('Não foi possível carregar do Google Drive e o cache está vazio. As mensagens podem não funcionar.');
+        }
+    }
+}
+
+// --- FIM DO BLOCO DE CÓDIGO PARA GOOGLE DRIVE ---
+
+
 // Função para iniciar o stream FFmpeg (para rádios ou mensagens)
 function startFfmpegStream(sourceUrl, res, isMessage = false) {
     // Se for um stream principal e já houver um processo FFmpeg rodando, encerra-o primeiro
@@ -72,7 +152,6 @@ function startFfmpegStream(sourceUrl, res, isMessage = false) {
     }
 
     console.log(`▶️ Iniciando FFmpeg para ${isMessage ? 'mensagem' : 'stream'}: ${sourceUrl}`);
-
     const ffmpegArgs = [
         '-i', sourceUrl,
         '-c:a', 'libmp3lame',
@@ -173,101 +252,37 @@ async function getAudioDuration(fileId) {
         ffprobeProcess.on('close', (code) => {
             if (code === 0) {
                 const parsedDuration = parseFloat(duration);
-                if (!isNaN(parsedDuration) && parsedDuration > 0) {
+                if (!isNaN(parsedDuration)) {
                     ffprobeCache[fileId] = parsedDuration;
-                    console.log(`✅ Duração de ${fileId}: ${parsedDuration.toFixed(2)} segundos`);
                     resolve(parsedDuration);
                 } else {
-                    console.warn(`⚠️ ffprobe retornou duração inválida para ${fileId}: ${duration.trim()}. Usando fallback de 60s.`);
-                    resolve(60); // Fallback para 60 segundos
+                    console.error(`❌ ffprobe retornou duração inválida para ${fileId}: ${duration}`);
+                    resolve(60); // Duração padrão de 60 segundos em caso de erro
                 }
             } else {
-                console.error(`❌ ffprobe exited with code ${code} for ${fileId}. Output: ${duration.trim()}. Usando fallback de 60s.`);
-                reject(new Error(`ffprobe failed for ${fileId}`));
+                console.error(`❌ ffprobe process exited with code ${code} for ${fileId}`);
+                resolve(60); // Duração padrão de 60 segundos em caso de erro
             }
         });
 
         ffprobeProcess.on('error', (err) => {
             console.error(`❌ Failed to start ffprobe process for ${fileId}:`, err);
-            reject(err);
+            resolve(60); // Duração padrão de 60 segundos em caso de erro
         });
-    }).catch(err => {
-        console.error(`Erro ao obter duração para ${fileId}:`, err.message);
-        return 60; // Fallback em caso de erro total
     });
 }
 
-// ===== LISTA COMPLETA DE MENSAGENS DO GOOGLE DRIVE (SEM DUPLICAÇÕES) =====
-const mensagensCache = [
-    { id: '1Z4ZZ_QhM82ivnbWg7c7zofCkGE6HuqJu', name: 'msg_010.mp3' },
-    { id: '1v10QzlGw4gGsJgWgsI6Gx7u0YHGzAmZH', name: 'msg_009.mp3' },
-    { id: '1nEiDvQ5-8RXWIO8btpqVMvEzJn3IwpP', name: 'msg_008.mp3' }, // Corrigido ID (era 1nEiDvQ5-8RXWIO8btpqVMvEzJn7IwpP)
-    { id: '11LSjJO3r_dKMls2YOrxzRvbchoM-Eoz3', name: 'msg_007.mp3' },
-    { id: '1vxw4yR4NcBfs-DCvktOSzsi7zvhiUkWh', name: 'msg_006.mp3' },
-    { id: '13LaeViIDUK-IwZCALw-5mV5sHTYoQkiZ', name: 'msg_005.mp3' },
-    { id: '1gFFmjUUNoqkdIHMGc-cYxP9SX6Zpp8v4', name: 'msg_004.mp3' },
-    { id: '1N49UV49UgOX8MaYmCO0EJwN2VB1Izp3S', name: 'msg_003.mp3' },
-    { id: '1f1xLhQWdCdLNCyHHnaHgH6zihHIE4gcv', name: 'msg_002.mp3' },
-    { id: '118tRazLR0sUIks4E43HH9ggOB_VMC7Pl', name: 'msg_001.mp3' },
-    { id: '1uX99frB_rnEU_uBD57u2WcdJaox4c6j_', name: 'Salmo 106.mp3' },
-    { id: '1lVviofGAdqEWygzdFLd1emt57flF9W1M', name: 'Salmo 119.mp3' },
-    { id: '1CLztJTfu0s8psYxpCVyQ-lti_lZTt6E7', name: 'Salmo 105.mp3' },
-    { id: '1y4ES81ZUYH_ads_Y0R3B2Ww5hHUks88p', name: 'Salmo 107.mp3' },
-    { id: '16v61m1k5tdKTZUBSucQkvhevBvhMuFTp', name: 'Salmo 78.mp3' },
-    { id: '12ra2H5ucpEO7aqCwVoFogJOkp_7rwX5w', name: 'Salmo 117.mp3' },
-    { id: '1AkPfoVZLmNofXx0wHNlpSsIiHSEalEIB', name: 'Salmo 131.mp3' },
-    { id: '1yN8U5g4lODAEhqR7wKwXerPjoT4hNGWh', name: 'Salmo 134.mp3' },
-    { id: '1BOb5GEiBhR9DeK2vLeF5CKn499v-jNG_', name: 'Salmo 121.mp3' },
-    { id: '1i3TK4QZvfh_BN_WpOKrxufZoWfRl-0Iv', name: 'Salmo 128.mp3' },
-    { id: '1ehj7_Oba7RtKaTBz0s3WOkZx0H4e4bYr', name: 'Salmo 133.mp3' },
-    { id: '1L37pSgDdbEJOB71Rh9wU_F1JieX5uS_y', name: 'Salmo 127.mp3' },
-    { id: '1i4VpP7lC7DuXHx7ggpdrESR_yIYyCT_8', name: 'Salmo 100.mp3' },
-    { id: '1LlfKangFdPNuo3Hk32SI1Q12C323YTLy', name: 'Salmo 125.mp3' },
-    { id: '1EBezglx-IfwK602bxrNkbmTADtQdWQZq', name: 'Salmo 114.mp3' },
-    { id: '1fiTdtM7SCT0Bk0HboUv7YLlpOv6YGnCM', name: 'Salmo 93.mp3' },
-    { id: '1h0pejzsa0msag3cPgZFfoHdxRD-VtEYl', name: 'Salmo 113.mp3' },
-    { id: '1kkTNKs332_0e3c06IYHsbFauWMU7URzE', name: 'Salmo 126.mp3' },
-    { id: '1n1gy4l9k6B6l5B_eXeaRHcb9895GOAD7', name: 'Salmo 120.mp3' },
-    { id: '1D1edO6gqvUS9Eqw0Zm8SzrLa07Ac68Rc', name: 'Salmo 123.mp3' },
-    { id: '1gF69TOjPdaSbm3R4OBuVw8glpdASlrFS', name: 'Salmo 150.mp3' },
-    { id: '1_3urJGy0_j66Vmf8y2-2P0k0P87TOGeS', name: 'Salmo 124.mp3' },
-    { id: '1j0_9NwY7KEctjj7fh5sn35sAsUr1HZAl', name: 'Salmo 129.mp3' },
-    { id: '1j2jClOT6fEGMffd2mehNbYmcopmdplGB', name: 'Salmo 122.mp3' },
-    { id: '1BwKCFU7FHI4PW4oBVQqUu1GaiAVID3Eo', name: 'Salmo 137.mp3' },
-    { id: '1FNdZIxM8LO4LFdH0EsThYsElmbC-dhK8', name: 'Salmo 130.mp3' },
-    { id: '16VECEsmwSs8gVuMj2IXpAVOQ1qaFIXyA', name: 'Salmo 142.mp3' },
-    { id: '1tySpNqegPCjV2qI-hBpmavutvFIwDwqi', name: 'Salmo 149.mp3' },
-    { id: '1-uelr59uvtKIK3ctyPzv9jBroFBvWP3v', name: 'Salmo 101.mp3' },
-    { id: '1mVkLs2hZYAEiPkdW8iw4-oF5fh1wsVhg', name: 'Salmo 82.mp3' },
-    { id: '1BTOwj2xHP0j4ppPMqdDYDZXd916cpuhd', name: 'Salmo 112.mp3' },
-    { id: '1Rji9Ybuh2Kyz-1SpMrMRkqmBrrZ7uOml', name: 'Salmo 138.mp3' },
-    { id: '1e-MZeWuu7n9xIu6UulFFA0Je4bKumZ4j', name: 'Salmo 111.mp3' },
-    { id: '13Istud0Ruj7oKHHHbblLznAXpm_W0Zho', name: 'Salmo 146.mp3' },
-    { id: '18FJOdANODiBo-vyYzsem9KwpyHZ3qi3k', name: 'Salmo 87.mp3' },
-    { id: '1EZzacTP20mPeBoEucmZC65ivsVL-Ay5D', name: 'Salmo 110.mp3' },
-    { id: '1t9_AYDKPVjS87wdmxdqQKS4s2AtlPA3F', name: 'Salmo 98.mp3' },
-    { id: '1NxLbScmVCEbGN9rqB3WNmfCeqmTKV3A4', name: 'Salmo 141.mp3' },
-    { id: '1JAqRW0pDm6XgDa8Lhdm2jI-cmqtDxKS8', name: 'Salmo 95.mp3' },
-    { id: '1dvmlynb5yDVHcQxZnMIQ7UrbUHTgisev', name: 'Salmo 99.mp3' },
-    { id: '1-m0huWoY2VZjxcmb0NAE6AuT29zU7oIh', name: 'Salmo 140.mp3' },
-    { id: '1Z22hoepgWHjoCKkd5JUCOViIYRLUuO5F', name: 'Salmo 97.mp3' },
-    { id: '1TWDRwqRDTBRwSSBiMHTw0GdXMwNBo24S', name: 'Salmo 76.mp3' },
-    { id: '1fQe7QcMcoyfymh2k4N682tZVZ5jO02hV', name: 'Salmo 96.mp3' },
-    { id: '1iIRJ121q9sk-uE2PQQL9uxmUEmiIPJsx', name: 'Salmo 143.mp3' },
-    { id: '1EPWnB4wB69Ps53UORwfPbuKiVzQIKEbn', name: 'Salmo 84.mp3' },
-    { id: '1eC6CqwimvrMydZGyXiEhRRV3XhwLkupv', name: 'Salmo 148.mp3' },
-    { id: '17WDUcHHwDgzURL6Iyn7xsdpGjGc86Dn4', name: 'Salmo 147.mp3' },
-    { id: '1i-aJU88g9GveRgRaPhQ43-HhkA_GM_Hn', name: 'Salmo 85.mp3' },
-    { id: '1E9pmHkkFrZRTDXWTihqNIvkRJLrFMh9X', name: 'Salmo 91.mp3' }
-];
+let currentMessage = null; // Mensagem atualmente em reprodução
+let messageSequenceTimeout = null; // Timeout para a próxima mensagem na sequência
 
-// Variável para armazenar a mensagem atual sendo reproduzida
-let currentMessage = null;
-
-// Função para tocar uma mensagem
-async function playMessage(message) {
-    if (isPlayingMessage) {
-        console.log(`⚠️ Mensagem ${message.name} ignorada, outra mensagem já está tocando.`);
+// Função para tocar uma mensagem (individual ou em sequência)
+async function playMessage(message, isSequence = false) {
+    if (!message || !message.id) {
+        console.error('❌ Tentativa de tocar mensagem inválida.');
+        return;
+    }
+    if (isPlayingMessage && !isSequence) { // Se já está tocando uma mensagem e não é parte de uma sequência
+        console.log(`⚠️ Mensagem ${currentMessage?.name} já está tocando. Ignorando nova solicitação.`);
         return;
     }
 
@@ -294,14 +309,109 @@ async function playMessage(message) {
         isPlayingMessage = false;
         currentMessage = null;
         io.emit('stop-mensagem'); // Informa o cliente para parar a mensagem
-        setMainStream(); // Retorna ao stream principal
+
+        if (isSequence) {
+            // Se for parte de uma sequência, agendamos a próxima mensagem
+            scheduleNextMessageInSequence();
+        } else {
+            // Se não for sequência, retorna ao stream principal
+            setMainStream();
+        }
     }, duration * 1000); // Converte segundos para milissegundos
 }
 
+// Variáveis para a sequência de mensagens das 11h
+let isPlayingMessageSequence = false;
+let currentMessageSequenceIndex = 0;
+let messageSequenceEndTimeout = null; // Timeout para finalizar a sequência às 12h
+
+// Função para agendar a próxima mensagem na sequência
+function scheduleNextMessageInSequence() {
+    if (!isPlayingMessageSequence) {
+        console.log('Sequência de mensagens finalizada ou interrompida.');
+        return;
+    }
+
+    if (messageFilesCache.length === 0) {
+        console.warn('Não há mensagens no cache para a sequência.');
+        stopMessageSequence();
+        return;
+    }
+
+    // Toca a próxima mensagem na ordem, ou volta para o início se chegou ao fim
+    const messageToPlay = messageFilesCache[currentMessageSequenceIndex];
+    currentMessageSequenceIndex = (currentMessageSequenceIndex + 1) % messageFilesCache.length;
+
+    playMessage(messageToPlay, true); // Passa 'true' para indicar que é parte de uma sequência
+}
+
+// Função para iniciar a sequência de mensagens das 11h
+function startMessageSequence() {
+    if (isPlayingMessageSequence) {
+        console.log('⚠️ Sequência de mensagens das 11h já está ativa.');
+        return;
+    }
+    if (messageFilesCache.length === 0) {
+        console.warn('Não há mensagens carregadas para iniciar a sequência das 11h.');
+        return;
+    }
+
+    console.log('🚀 Iniciando sequência de mensagens do Google Drive (11h00-12h00).');
+    isPlayingMessageSequence = true;
+    currentMessageSequenceIndex = 0; // Começa do início da lista
+
+    // Define o stream principal como "Mensagens do Google Drive"
+    currentPlayingStream = {
+        url: '/message-stream', // Uma URL simbólica, pois o cliente vai tocar via 'play-mensagem'
+        description: 'Mensagens do Google Drive'
+    };
+    io.emit('play-stream', currentPlayingStream); // Notifica o cliente para mudar a descrição
+
+    scheduleNextMessageInSequence(); // Inicia a primeira mensagem
+
+    // Agenda o fim da sequência para 12h00
+    const now = new Date();
+    const msUntil12h = (12 * 60 * 60 * 1000) - (now.getHours() * 60 * 60 * 1000 + now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds());
+
+    if (msUntil12h > 0) {
+        messageSequenceEndTimeout = setTimeout(stopMessageSequence, msUntil12h);
+        console.log(`⏰ Sequência de mensagens agendada para terminar em ${msUntil12h / 1000 / 60} minutos.`);
+    } else {
+        // Se já passou das 12h (por algum motivo), para imediatamente
+        stopMessageSequence();
+    }
+}
+
+// Função para parar a sequência de mensagens
+function stopMessageSequence() {
+    if (!isPlayingMessageSequence) return;
+
+    console.log('🛑 Finalizando sequência de mensagens do Google Drive (12h00).');
+    isPlayingMessageSequence = false;
+    if (messageSequenceEndTimeout) {
+        clearTimeout(messageSequenceEndTimeout);
+        messageSequenceEndTimeout = null;
+    }
+    if (messageTimeout) { // Garante que a mensagem atual pare
+        clearTimeout(messageTimeout);
+        messageTimeout = null;
+    }
+    isPlayingMessage = false; // Garante que o estado de "tocando mensagem" seja resetado
+    currentMessage = null;
+    io.emit('stop-mensagem'); // Informa o cliente para parar a mensagem
+    setMainStream(); // Retorna ao stream principal
+}
+
+
 // Função para definir o stream principal com base na programação
 function setMainStream() {
+    // Se a sequência de mensagens das 11h estiver ativa, não muda o stream principal
+    if (isPlayingMessageSequence) {
+        console.log('⚠️ Não alterando stream principal, sequência de mensagens das 11h está tocando.');
+        return;
+    }
     if (isPlayingMessage) {
-        console.log('⚠️ Não alterando stream principal, mensagem está tocando.');
+        console.log('⚠️ Não alterando stream principal, mensagem individual está tocando.');
         return;
     }
 
@@ -317,7 +427,6 @@ function setMainStream() {
     };
 
     // ===== PROGRAMAÇÃO ESPECIAL =====
-
     // Domingo: Rádio Marabá (Missa) 8h30-9h45
     if (day === 0 && currentTimeInMinutes >= (8 * 60 + 30) && currentTimeInMinutes < (9 * 60 + 45)) {
         newStream = {
@@ -325,20 +434,45 @@ function setMainStream() {
             description: 'Rádio Marabá (Missa)'
         };
     }
+    // Sábado: Missa Rádio Ametista FM 19h00-20h30
+    else if (day === 6 && currentTimeInMinutes >= (19 * 60) && currentTimeInMinutes < (20 * 60 + 30)) {
+        newStream = {
+            url: RADIO_AMETISTA_FM_URL,
+            description: 'Rádio Ametista FM (Missa de Sábado)'
+        };
+    }
     // Sábado: Programa específico do sábado 12h50-13h05
     else if (day === 6 && currentTimeInMinutes >= (12 * 60 + 50) && currentTimeInMinutes < (13 * 60 + 5)) {
         newStream = {
-            url: RADIO_VOZ_IMACULADO_URL, // Assumindo que o programa é na Voz do Imaculado
+            url: RADIO_VOZ_IMACULADO_URL,
             description: 'Voz do Coração Imaculado (Programa de Sábado)'
         };
     }
-    // Madrugada Clássica: 00h10-03h00
-    else if (currentTimeInMinutes >= (0 * 60 + 10) && currentTimeInMinutes < (3 * 60)) {
+    // Madrugada Clássica: 00h10-05h00
+    else if (currentTimeInMinutes >= (0 * 60 + 10) && currentTimeInMinutes < (5 * 60)) {
         newStream = {
             url: RADIO_CLASSICA_URL,
             description: 'Swiss Classic Radio (Madrugada Clássica)'
         };
     }
+    // Horário das 11h00-12h00: Mensagens do Google Drive (NOVO BLOCO DE PROGRAMAÇÃO!)
+    else if (currentTimeInMinutes >= (11 * 60) && currentTimeInMinutes < (12 * 60)) {
+        // A lógica de startMessageSequence() já cuida da reprodução e do estado
+        // Aqui, apenas garantimos que o currentPlayingStream reflita isso
+        newStream = {
+            url: '/message-stream', // URL simbólica
+            description: 'Mensagens do Google Drive'
+        };
+    }
+    // A partir das 05:00, retorna à Voz da Imaculada (se não houver outra programação)
+    else if (currentTimeInMinutes >= (5 * 60) && newStream.url === RADIO_VOZ_IMACULADO_URL) {
+        // Já é o default, mas explicitando para clareza
+        newStream = {
+            url: RADIO_VOZ_IMACULADO_URL,
+            description: 'Voz do Coração Imaculado'
+        };
+    }
+
 
     // Verifica se o stream mudou
     if (newStream.url !== currentPlayingStream.url) {
@@ -352,8 +486,7 @@ function setMainStream() {
 }
 
 // ===== AGENDAMENTO DE MENSAGENS =====
-
-// Mensagens diárias (fora da madrugada clássica)
+// Mensagens diárias (fora da madrugada clássica E fora do bloco das 11h-12h)
 const dailyMessageTimes = [
     '55 9 * * *',   // 9:55
     '40 12 * * *',  // 12:40
@@ -371,52 +504,75 @@ dailyMessageTimes.forEach(time => {
     cron.schedule(time, () => {
         const now = new Date();
         const hours = now.getHours();
-        // Não toca mensagens diárias se estiver na Madrugada Clássica
-        if (!(hours >= 0 && hours < 3)) { // 00h00 a 02h59
-            const randomMessage = mensagensCache[Math.floor(Math.random() * mensagensCache.length)];
-            playMessage(randomMessage);
+        // Não toca mensagens diárias se estiver na Madrugada Clássica (00h00 a 04h59)
+        // OU se estiver no bloco de mensagens das 11h-12h
+        if (!(hours >= 0 && hours < 5) && !(hours === 11)) { // Ajustado para 00h00 a 04h59 E fora das 11h
+            if (messageFilesCache.length > 0) {
+                const randomMessage = messageFilesCache[Math.floor(Math.random() * messageFilesCache.length)];
+                playMessage(randomMessage);
+            } else {
+                console.warn('Não há mensagens carregadas do Google Drive para tocar nas mensagens diárias.');
+            }
         }
     });
 });
 
-// Mensagens na Madrugada Clássica (00:10 até 03:00, a cada 15 minutos)
-cron.schedule('10,25,40,55 0-2 * * *', () => { // Aos 10, 25, 40, 55 minutos das horas 0, 1, 2
+// Mensagens na Madrugada Clássica (00:10 até 05:00, a cada 30 minutos)
+cron.schedule('10,40 0-4 * * *', () => { // Aos 10 e 40 minutos das horas 0, 1, 2, 3, 4
     const now = new Date();
     const hours = now.getHours();
     const minutes = now.getMinutes();
-    // Garante que só toque se estiver dentro do período 00:10-03:00
-    if ((hours === 0 && minutes >= 10) || (hours > 0 && hours < 3)) {
-        const randomMessage = mensagensCache[Math.floor(Math.random() * mensagensCache.length)];
-        playMessage(randomMessage);
+    // Garante que só toque se estiver dentro do período 00:10-05:00
+    if ((hours === 0 && minutes >= 10) || (hours > 0 && hours < 5)) {
+        if (messageFilesCache.length > 0) {
+            const randomMessage = messageFilesCache[Math.floor(Math.random() * messageFilesCache.length)];
+            playMessage(randomMessage);
+        } else {
+            console.warn('Não há mensagens carregadas do Google Drive para tocar na madrugada clássica.');
+        }
     }
+});
+
+// ===== NOVO AGENDAMENTO: SEQUÊNCIA DE MENSAGENS DAS 11H00 ÀS 12H00 =====
+cron.schedule('0 11 * * *', () => { // Todos os dias, às 11h00
+    startMessageSequence();
 });
 
 // Inicializa a programação ao iniciar o servidor
 setMainStream();
-
 // Atualiza a programação a cada minuto
 cron.schedule('* * * * *', setMainStream);
 
 // ===== INICIANDO O SERVIDOR =====
-server.listen(PORT, () => {
-    console.log(`
+// Antes de iniciar o servidor, configuramos o Google Drive e carregamos as mensagens
+setupGoogleDrive().then(() => {
+    fetchMessageFilesFromDrive().then(() => {
+        server.listen(PORT, () => {
+            console.log(`
 ╔═════════════════════════════════════════════════════╗
 ║                                                     ║
 ║  📡 Servidor iniciado com sucesso na porta ${PORT}  ║
 ║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║
-║  📊 Mensagens carregadas: ${mensagensCache.length}  ║
+║  📊 Mensagens carregadas: ${messageFilesCache.length}  ║
 ║  🎵 Rádio Principal: ${currentPlayingStream.description}  ║
-║  🎼 Clássica: 00h10-03h00 (msgs a cada 15min)       ║
+║  🎼 Clássica: 00h10-05h00 (msgs a cada 30min)       ║
 ║  ⛪ Domingo: Missa Marabá 8h30-9h45                 ║
+║  📻 Sábado: Missa Ametista 19h00-20h30              ║
 ║  📻 Sábado: Voz do Pastor 12h50-13h05               ║
 ║  ⏰ Mensagens diárias: 9:55, 12:40, 13:52...         ║
+║  🗣️ Mensagens em sequência: 11h00-12h00 (NOVO!)    ║
 ╚═════════════════════════════════════════════════════╝
-`);
+            `);
+        });
+    });
+}).catch(error => {
+    console.error('❌ Falha crítica ao iniciar o servidor devido a erro no Google Drive:', error);
+    process.exit(1); // Sai se não conseguir configurar o Drive
 });
 
 // Função para tocar o stream principal (chamada pelo cliente)
 function playMainStream() {
-    if (!isPlayingMessage) {
+    if (!isPlayingMessage && !isPlayingMessageSequence) { // Verifica também a sequência
         io.emit('play-stream', currentPlayingStream);
     }
 }
