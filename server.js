@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const https = require('https'); // Necessário para streams HTTPS
+const https = require('https');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const cron = require('node-cron');
@@ -8,7 +8,6 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const url = require('url');
-const { exec, spawn } = require('child_process'); // Adicionado para gerenciar o Icecast
 
 const app = express();
 const server = http.createServer(app);
@@ -26,13 +25,6 @@ app.use(express.static('public'));
 const PORT = process.env.PORT || 3000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
-// --- Configurações do Icecast ---
-const ICECAST_CONFIG_PATH = path.join(__dirname, 'icecast.xml'); // Caminho para o seu icecast.xml
-const ICECAST_BIN_PATH = '/usr/bin/icecast2'; // Caminho padrão do Icecast no Linux (Render)
-const ICECAST_PORT = 80; // Porta que o Icecast vai escutar (Render expõe a porta 80)
-const ICECAST_MOUNT = '/live'; // Mount point para a transmissão ao vivo
-const ICECAST_SOURCE_PASSWORD = 'webradio_source_2025'; // Senha do Rocket Broadcaster
-
 // Streams de rádio
 const STREAMS = {
     'maraba': {
@@ -48,12 +40,8 @@ const STREAMS = {
         description: 'Clássica'
     },
     'ametista': {
-        url: 'https://streaming.speedrs.com.br/radio/8010/maraba', // Você pode ajustar este para um stream real da Ametista se tiver
+        url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
         description: 'Ametista FM'
-    },
-    'live': { // Adicionado para o stream ao vivo do Icecast
-        url: `http://localhost:${ICECAST_PORT}${ICECAST_MOUNT}`, // O player vai acessar o Icecast localmente
-        description: 'AO VIVO'
     }
 };
 
@@ -63,9 +51,6 @@ let messages = [];
 let isPlayingMessage = false;
 let messageTimeout = null;
 let clients = [];
-let isLiveStreamActive = false; // Flag para controlar se a transmissão ao vivo está ativa
-let liveStreamSilenceTimeout = null; // Timeout para detectar silêncio na live
-let icecastProcess = null; // Para manter a referência ao processo do Icecast
 
 // ===== AUTENTICAÇÃO GOOGLE DRIVE =====
 async function authenticateGoogleDrive() {
@@ -131,10 +116,6 @@ async function playSequentialMessages() {
         console.log('⚠️ Nenhuma mensagem disponível para tocar.');
         return;
     }
-    if (isLiveStreamActive) {
-        console.log('⚠️ Transmissão ao vivo ativa. Não é possível tocar mensagens agendadas.');
-        return;
-    }
 
     isPlayingMessage = true;
     console.log(`📢 Iniciando bloco de ${messages.length} mensagens...`);
@@ -145,8 +126,7 @@ async function playSequentialMessages() {
             name: message.name,
             url: message.url
         });
-        // Ajuste o tempo de espera para a duração real da mensagem se possível, ou um valor maior
-        await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // Exemplo: 60 segundos por mensagem
+        await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // 60 segundos por mensagem
     }
     console.log('⏹️ Bloco de mensagens finalizado.');
     isPlayingMessage = false;
@@ -160,10 +140,6 @@ async function playSequentialMessages() {
 // ===== FUNÇÃO PARA TOCAR MENSAGENS A CADA 30 MINUTOS (01:00 - 05:00) =====
 async function playMessageEvery30Minutes() {
     if (messages.length === 0) return;
-    if (isLiveStreamActive) {
-        console.log('⚠️ Transmissão ao vivo ativa. Não é possível tocar mensagens agendadas.');
-        return;
-    }
 
     const randomMessage = messages[Math.floor(Math.random() * messages.length)];
     console.log(`📢 Tocando mensagem aleatória: ${randomMessage.name}`);
@@ -171,7 +147,7 @@ async function playMessageEvery30Minutes() {
         name: randomMessage.name,
         url: randomMessage.url
     });
-    await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // Exemplo: 60 segundos por mensagem
+    await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // 60 segundos por mensagem
     io.emit('stop-mensagem');
     io.emit('play-stream', {
         url: '/stream',
@@ -185,33 +161,29 @@ function setupSchedule() {
 
     // 00:10 - Muda para música clássica
     cron.schedule('10 0 * * *', () => {
-        if (!isLiveStreamActive) {
-            console.log('🎼 00:10 - Mudando para Clássica');
-            currentStream = STREAMS.classica;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
+        console.log('🎼 00:10 - Mudando para Clássica');
+        currentStream = STREAMS.classica;
+        io.emit('play-stream', {
+            url: '/stream',
+            description: currentStream.description
+        });
     });
 
     // 01:00, 01:30, 02:00, 02:30, 03:00, 03:30, 04:00, 04:30 - Mensagens a cada 30 min
     cron.schedule('0,30 1-4 * * *', () => {
-        if (!isPlayingMessage && !isLiveStreamActive) {
+        if (!isPlayingMessage) {
             playMessageEvery30Minutes();
         }
     });
 
     // 05:00 - Retorna para Voz do Imaculado
     cron.schedule('0 5 * * *', () => {
-        if (!isLiveStreamActive) {
-            console.log('📻 05:00 - Retornando para Voz do Coração Imaculado');
-            currentStream = STREAMS.imaculado;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
+        console.log('📻 05:00 - Retornando para Voz do Coração Imaculado');
+        currentStream = STREAMS.imaculado;
+        io.emit('play-stream', {
+            url: '/stream',
+            description: currentStream.description
+        });
     });
 
     // 11:00 - Inicia bloco de mensagens diárias
@@ -222,179 +194,70 @@ function setupSchedule() {
 
     // 12:00 - Retorna para stream principal
     cron.schedule('0 12 * * *', () => {
-        if (!isLiveStreamActive) {
-            console.log('📻 12:00 - Retornando para stream principal');
-            isPlayingMessage = false;
-            currentStream = STREAMS.imaculado;
-            io.emit('stop-mensagem');
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
-    });
-
-    // Domingo 08:30 - Missa Marabá
-    cron.schedule('30 8 * * 0', () => {
-        if (!isLiveStreamActive) {
-            console.log('⛪ Domingo 08:30 - Iniciando Missa Marabá');
-            currentStream = STREAMS.maraba;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: 'Missa Marabá'
-            });
-        }
-    });
-
-    // Domingo 09:45 - Retorna para Imaculado
-    cron.schedule('45 9 * * 0', () => {
-        if (!isLiveStreamActive) {
-            console.log('📻 Domingo 09:45 - Retornando para Voz do Coração Imaculado');
-            currentStream = STREAMS.imaculado;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
-    });
-
-    // Sábado 12:50 - Voz do Pastor
-    cron.schedule('50 12 * * 6', () => {
-        if (!isLiveStreamActive) {
-            console.log('🎤 Sábado 12:50 - Iniciando Voz do Pastor');
-            currentStream = STREAMS.maraba;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: 'Voz do Pastor'
-            });
-        }
-    });
-
-    // Sábado 13:05 - Retorna para Imaculado
-    cron.schedule('5 13 * * 6', () => {
-        if (!isLiveStreamActive) {
-            console.log('📻 Sábado 13:05 - Retornando para Voz do Coração Imaculado');
-            currentStream = STREAMS.imaculado;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
-    });
-
-    // Sábado 19:00 - Missa Ametista (ou Live se estiver ativa)
-    cron.schedule('0 19 * * 6', () => {
-        if (!isLiveStreamActive) { // Se a live não estiver ativa, toca Ametista
-            console.log('⛪ Sábado 19:00 - Iniciando Missa Ametista (ou aguardando Live)');
-            currentStream = STREAMS.ametista;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: 'Missa Ametista'
-            });
-        } else {
-            console.log('⛪ Sábado 19:00 - Transmissão ao vivo já ativa para a Missa.');
-        }
-    });
-
-    // Sábado 20:30 - Retorna para Imaculado
-    cron.schedule('30 20 * * 6', () => {
-        if (!isLiveStreamActive) {
-            console.log('📻 Sábado 20:30 - Retornando para Voz do Coração Imaculado');
-            currentStream = STREAMS.imaculado;
-            io.emit('play-stream', {
-                url: '/stream',
-                description: currentStream.description
-            });
-        }
-    });
-
-    // Mensagens diárias em horários específicos
-    const dailyMessageTimes = [
-        '10:00', '12:40', '13:52', '14:30', '15:50', '16:20', '17:13', '18:55', '20:00', '23:50'
-    ];
-    dailyMessageTimes.forEach(time => {
-        const [hour, minute] = time.split(':').map(Number);
-        cron.schedule(`${minute} ${hour} * * *`, () => {
-            if (!isPlayingMessage && !isLiveStreamActive) {
-                console.log(`📢 ${time} - Tocando mensagem diária agendada.`);
-                playMessageEvery30Minutes(); // Reutiliza a função para tocar uma mensagem aleatória
-            }
+        console.log('📻 12:00 - Retornando para stream principal');
+        isPlayingMessage = false;
+        currentStream = STREAMS.imaculado;
+        io.emit('stop-mensagem');
+        io.emit('play-stream', {
+            url: '/stream',
+            description: currentStream.description
         });
     });
 
     console.log('✅ Agendamento configurado com sucesso');
 }
 
-// ===== ROTA PARA PROXY DO STREAM (compatível com Icecast/Shoutcast) =====
-// Esta rota agora vai servir o stream do Icecast local ou de rádios externas
+// ===== ROTA PARA PROXY DO STREAM =====
 app.get('/stream', (req, res) => {
-    if (isLiveStreamActive) {
-        // Se a live estiver ativa, serve o stream do Icecast local
-        const liveStreamUrl = `http://localhost:${ICECAST_PORT}${ICECAST_MOUNT}`;
-        console.log(`🔗 Servindo stream AO VIVO do Icecast local: ${liveStreamUrl}`);
-        const liveReq = http.request(liveStreamUrl, (liveRes) => {
-            res.writeHead(liveRes.statusCode, liveRes.headers);
-            liveRes.pipe(res);
-        });
-        liveReq.on('error', (err) => {
-            console.error('❌ Erro ao servir stream AO VIVO do Icecast local:', err.message);
-            if (!res.headersSent) {
-                res.status(500).send('Erro ao carregar stream ao vivo.');
-            }
-        });
-        liveReq.end();
-    } else {
-        // Caso contrário, serve o stream da rádio externa atual
-        try {
-            console.log(`🔗 Proxying stream: ${currentStream.url}`);
-            const streamUrl = new URL(currentStream.url);
-            const client = streamUrl.protocol === 'https:' ? https : http;
-            const options = {
-                hostname: streamUrl.hostname,
-                port: streamUrl.port,
-                path: streamUrl.pathname + streamUrl.search,
-                method: 'GET',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Icy-MetaData': '0'
-                },
-                timeout: 15000
-            };
-            const request = client.request(options, (streamRes) => {
-                res.writeHead(streamRes.statusCode, {
-                    'Content-Type': streamRes.headers['content-type'] || 'audio/mpeg',
-                    'Cache-Control': 'no-cache',
-                    'Connection': 'keep-alive',
-                    'Access-Control-Allow-Origin': '*',
-                    'Transfer-Encoding': 'chunked'
-                });
-                streamRes.pipe(res);
-                streamRes.on('error', (err) => {
-                    console.error('❌ Erro ao receber stream:', err.message);
-                    if (!res.headersSent) {
-                        res.status(500).send('Erro ao carregar stream');
-                    }
-                });
+    try {
+        console.log(`🔗 Proxying stream: ${currentStream.url}`);
+        const streamUrl = new URL(currentStream.url);
+        const client = streamUrl.protocol === 'https:' ? https : http;
+        const options = {
+            hostname: streamUrl.hostname,
+            port: streamUrl.port,
+            path: streamUrl.pathname + streamUrl.search,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Icy-MetaData': '0'
+            },
+            timeout: 15000
+        };
+        const request = client.request(options, (streamRes) => {
+            res.writeHead(streamRes.statusCode, {
+                'Content-Type': streamRes.headers['content-type'] || 'audio/mpeg',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'Transfer-Encoding': 'chunked'
             });
-            request.on('error', (err) => {
-                console.error('❌ Erro na requisição do stream:', err.message);
+            streamRes.pipe(res);
+            streamRes.on('error', (err) => {
+                console.error('❌ Erro ao receber stream:', err.message);
                 if (!res.headersSent) {
                     res.status(500).send('Erro ao carregar stream');
                 }
             });
-            request.on('timeout', () => {
-                console.error('❌ Timeout ao conectar no stream');
-                request.destroy();
-                if (!res.headersSent) {
-                    res.status(504).send('Timeout ao carregar stream');
-                }
-            });
-            request.end();
-        } catch (error) {
-            console.error('❌ Erro na rota /stream:', error.message);
+        });
+        request.on('error', (err) => {
+            console.error('❌ Erro na requisição do stream:', err.message);
             if (!res.headersSent) {
                 res.status(500).send('Erro ao carregar stream');
             }
+        });
+        request.on('timeout', () => {
+            console.error('❌ Timeout ao conectar no stream');
+            request.destroy();
+            if (!res.headersSent) {
+                res.status(504).send('Timeout ao carregar stream');
+            }
+        });
+        request.end();
+    } catch (error) {
+        console.error('❌ Erro na rota /stream:', error.message);
+        if (!res.headersSent) {
+            res.status(500).send('Erro ao carregar stream');
         }
     }
 });
@@ -403,11 +266,9 @@ app.get('/stream', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`✅ Cliente conectado: ${socket.id}`);
     clients.push(socket.id);
-    // Envia o status inicial da live e o stream atual
-    socket.emit('liveStreamStatus', isLiveStreamActive);
     socket.emit('play-stream', {
         url: '/stream',
-        description: isLiveStreamActive ? STREAMS.live.description : currentStream.description
+        description: currentStream.description
     });
 
     socket.on('disconnect', () => {
@@ -418,136 +279,16 @@ io.on('connection', (socket) => {
     socket.on('get-current-stream', () => {
         socket.emit('play-stream', {
             url: '/stream',
-            description: isLiveStreamActive ? STREAMS.live.description : currentStream.description
+            description: currentStream.description
         });
     });
 });
-
-// ===== GERENCIAMENTO DO ICECAST =====
-function startIcecast() {
-    console.log('🚀 Tentando iniciar o Icecast...');
-    // Verifica se o icecast.xml existe
-    if (!fs.existsSync(ICECAST_CONFIG_PATH)) {
-        console.error(`❌ Erro: Arquivo de configuração do Icecast não encontrado em ${ICECAST_CONFIG_PATH}`);
-        console.error('Por favor, crie o arquivo icecast.xml na raiz do seu projeto.');
-        process.exit(1);
-    }
-
-    // Inicia o Icecast como um processo filho
-    icecastProcess = spawn(ICECAST_BIN_PATH, ['-c', ICECAST_CONFIG_PATH]);
-
-    icecastProcess.stdout.on('data', (data) => {
-        console.log(`[Icecast stdout]: ${data}`);
-    });
-
-    icecastProcess.stderr.on('data', (data) => {
-        console.error(`[Icecast stderr]: ${data}`);
-    });
-
-    icecastProcess.on('close', (code) => {
-        console.log(`[Icecast] Processo finalizado com código ${code}`);
-        if (isLiveStreamActive) {
-            // Se o Icecast fechar enquanto a live estiver ativa, significa que o encoder desconectou
-            console.log('⚠️ Icecast fechou enquanto a live estava ativa. Finalizando live.');
-            endLiveStream();
-        }
-        // Tenta reiniciar o Icecast se ele fechar inesperadamente
-        setTimeout(startIcecast, 5000);
-    });
-
-    icecastProcess.on('error', (err) => {
-        console.error(`❌ Erro ao iniciar o Icecast: ${err.message}`);
-        console.error('Verifique se o Icecast está instalado e o caminho está correto.');
-        // Tenta reiniciar o Icecast se houver erro
-        setTimeout(startIcecast, 5000);
-    });
-
-    // Monitora o Icecast para detectar quando um encoder se conecta/desconecta
-    // Isso é feito verificando o status do mount point '/live'
-    setInterval(checkIcecastMountStatus, 10 * 1000); // Verifica a cada 10 segundos
-}
-
-async function checkIcecastMountStatus() {
-    try {
-        const response = await new Promise((resolve, reject) => {
-            const req = http.get(`http://localhost:${ICECAST_PORT}/admin/listmounts?mount=${ICECAST_MOUNT}`, {
-                auth: `admin:${ICECAST_SOURCE_PASSWORD}` // Usa a senha de source para autenticar no admin (se configurado)
-            }, (res) => {
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => resolve(data));
-            });
-            req.on('error', reject);
-        });
-
-        // Icecast admin retorna XML. Uma forma simples de verificar é procurar por 'source'
-        const isMountActive = response.includes('<source>');
-
-        if (isMountActive && !isLiveStreamActive) {
-            console.log('✅ Encoder conectado ao Icecast! Iniciando transmissão ao vivo.');
-            startLiveStream();
-        } else if (!isMountActive && isLiveStreamActive) {
-            console.log('❌ Encoder desconectado do Icecast. Finalizando transmissão ao vivo.');
-            endLiveStream();
-        }
-    } catch (error) {
-        // console.error('⚠️ Erro ao verificar status do Icecast:', error.message);
-        // Isso pode acontecer se o Icecast ainda não estiver totalmente pronto
-    }
-}
-
-function startLiveStream() {
-    isLiveStreamActive = true;
-    io.emit('liveStreamStatus', true); // Informa ao frontend que a live está ativa
-    io.emit('play-stream', {
-        url: '/stream', // O player vai buscar o stream do Icecast local via /stream
-        description: STREAMS.live.description
-    });
-    console.log('🔴 AO VIVO: Transmissão iniciada.');
-    startLiveStreamSilenceDetection(); // Inicia a detecção de silêncio
-}
-
-function endLiveStream() {
-    isLiveStreamActive = false;
-    io.emit('liveStreamStatus', false); // Informa ao frontend que a live terminou
-    console.log('⏹️ AO VIVO: Transmissão finalizada. Voltando para a programação normal.');
-    stopLiveStreamSilenceDetection(); // Para a detecção de silêncio
-    // Volta para a rádio padrão após um pequeno atraso
-    setTimeout(() => {
-        currentStream = STREAMS.imaculado; // Garante que volte para a rádio padrão
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
-    }, 5000); // 5 segundos de atraso
-}
-
-// --- Detecção de silêncio na transmissão ao vivo ---
-function startLiveStreamSilenceDetection() {
-    if (liveStreamSilenceTimeout) {
-        clearTimeout(liveStreamSilenceTimeout);
-    }
-    liveStreamSilenceTimeout = setTimeout(() => {
-        if (isLiveStreamActive) {
-            console.warn('⚠️ Detectado 1 minuto de silêncio na transmissão ao vivo. Finalizando live.');
-            endLiveStream(); // Chama a função para finalizar a live
-        }
-    }, 60 * 1000); // 1 minuto de silêncio
-}
-
-function stopLiveStreamSilenceDetection() {
-    if (liveStreamSilenceTimeout) {
-        clearTimeout(liveStreamSilenceTimeout);
-        liveStreamSilenceTimeout = null;
-    }
-}
 
 // ===== INICIALIZAÇÃO DO SERVIDOR =====
 async function startServer() {
     try {
         await initializeGoogleDrive();
         setupSchedule();
-        startIcecast(); // Inicia o Icecast junto com o servidor Node.js
 
         server.listen(PORT, () => {
             console.log(`\n╔═════════════════════════════════════════════════════╗`);
@@ -557,13 +298,9 @@ async function startServer() {
             console.log(`║  📊 Mensagens carregadas: ${messages.length}  ║`);
             console.log(`║  📻 Stream principal: ${currentStream.description}  ║`);
             console.log(`║  🎼 Clássica: 00h10-05h00 (msgs a cada 30min)       ║`);
-            console.log(`║  ⛪ Domingo: Missa Marabá 8h30-9h45                 ║`);
-            console.log(`║  📻 Sábado: Missa Ametista 19h00-20h30              ║`);
-            console.log(`║  📻 Sábado: Voz do Pastor 12h50-13h05               ║`);
             console.log(`║  ⏰ Bloco de Mensagens: 11h00-12h00 (TODOS OS DIAS) ║`);
             console.log(`║  🗣️ Mensagens noturnas: a cada 30 min (01-05h)     ║`);
             console.log(`║  🌐 URL: https://webradio-paroquia.onrender.com     ║`);
-            console.log(`║  🎧 Icecast na porta ${ICECAST_PORT}, mount ${ICECAST_MOUNT}       ║`);
             console.log(`║                                                     ║`);
             console.log(`╚═════════════════════════════════════════════════════╝\n`);
         });
