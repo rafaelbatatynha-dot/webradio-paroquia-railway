@@ -4,7 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const cron = require('node-cron');
 const { google } = require('googleapis');
-const axios = require('axios');
+const axios = require('axios'); // Certifique-se que axios está instalado (npm install axios)
 const path = require('path');
 const fs = require('fs');
 
@@ -39,8 +39,12 @@ const STREAMS = {
         description: 'Clássica'
     },
     'ametista': {
-        url: 'https://www.radios.com.br/aovivo/radio-ametista-885-fm/16128',
-        description: 'Ametista FM'
+        // ATENÇÃO: Esta URL NÃO é um stream de áudio direto.
+        // É uma página HTML com um player. O proxy não funcionará com ela.
+        // Se você tiver uma URL de stream DIRETO (ex: .mp3, .aac, Icecast/Shoutcast),
+        // por favor, substitua aqui. Por enquanto, vou usar a Marabá como fallback.
+        url: 'https://streaming.speedrs.com.br/radio/8010/maraba', // Temporariamente usando Marabá
+        description: 'Ametista FM (Stream Indisponível - Usando Marabá)'
     }
 };
 
@@ -147,7 +151,7 @@ async function playSequentialMessages() {
 
     io.emit('stop-mensagem');
     io.emit('play-stream', {
-        url: currentStream.url,
+        url: '/stream', // Sempre usa a rota /stream do seu servidor
         description: currentStream.description
     });
 }
@@ -168,7 +172,7 @@ async function playMessageEvery30Minutes() {
 
     io.emit('stop-mensagem');
     io.emit('play-stream', {
-        url: currentStream.url,
+        url: '/stream', // Sempre usa a rota /stream do seu servidor
         description: currentStream.description
     });
 }
@@ -182,7 +186,7 @@ function setupSchedule() {
         console.log('🎼 00:10 - Mudando para Clássica');
         currentStream = STREAMS.classica;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -199,7 +203,7 @@ function setupSchedule() {
         console.log('📻 05:00 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -217,7 +221,7 @@ function setupSchedule() {
         currentStream = STREAMS.imaculado;
         io.emit('stop-mensagem');
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -227,7 +231,7 @@ function setupSchedule() {
         console.log('⛪ Domingo 08:30 - Iniciando Missa Marabá');
         currentStream = STREAMS.maraba;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: 'Missa Marabá'
         });
     });
@@ -237,7 +241,7 @@ function setupSchedule() {
         console.log('📻 Domingo 09:45 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -247,7 +251,7 @@ function setupSchedule() {
         console.log('🎤 Sábado 12:50 - Iniciando Voz do Pastor');
         currentStream = STREAMS.maraba;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: 'Voz do Pastor'
         });
     });
@@ -257,18 +261,18 @@ function setupSchedule() {
         console.log('📻 Sábado 13:05 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
 
-    // Sábado 19:00 - Missa Ametista
+    // Sábado 19:00 - Missa Ametista (usando a URL temporária)
     cron.schedule('0 19 * * 6', () => {
         console.log('⛪ Sábado 19:00 - Iniciando Missa Ametista');
         currentStream = STREAMS.ametista;
         io.emit('play-stream', {
-            url: currentStream.url,
-            description: 'Missa Ametista'
+            url: '/stream',
+            description: currentStream.description
         });
     });
 
@@ -277,7 +281,7 @@ function setupSchedule() {
         console.log('📻 Sábado 20:30 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', {
-            url: currentStream.url,
+            url: '/stream',
             description: currentStream.description
         });
     });
@@ -285,7 +289,7 @@ function setupSchedule() {
     console.log('✅ Agendamento configurado com sucesso');
 }
 
-// ===== ROTA PARA PROXY DO STREAM (em vez de redirect) =====
+// ===== ROTA PARA PROXY DO STREAM (com Content-Type forçado) =====
 app.get('/stream', async (req, res) => {
     try {
         console.log(`🔗 Proxying stream: ${currentStream.url}`);
@@ -295,11 +299,11 @@ app.get('/stream', async (req, res) => {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
-            timeout: 10000
+            timeout: 15000 // Aumentado o timeout para 15 segundos
         });
 
-        // Define headers corretos para áudio
-        res.setHeader('Content-Type', response.headers['content-type'] || 'audio/mpeg');
+        // Força o Content-Type para audio/mpeg (MP3)
+        res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -323,7 +327,7 @@ io.on('connection', (socket) => {
     clients.push(socket.id);
 
     socket.emit('play-stream', {
-        url: '/stream',
+        url: '/stream', // Sempre usa a rota /stream do seu servidor
         description: currentStream.description
     });
 
@@ -334,7 +338,7 @@ io.on('connection', (socket) => {
 
     socket.on('get-current-stream', () => {
         socket.emit('play-stream', {
-            url: '/stream',
+            url: '/stream', // Sempre usa a rota /stream do seu servidor
             description: currentStream.description
         });
     });
