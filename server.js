@@ -26,24 +26,29 @@ const PORT = process.env.PORT || 3000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
 // Streams de rádio
-const STREAMS = {
-    'maraba': {
-        url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
-        description: 'Marabá'
-    },
-    'imaculado': {
-        url: 'http://r13.ciclano.io:9033/live',
-        description: 'Voz do Coração Imaculado'
-    },
-    'classica': {
-        url: 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128',
-        description: 'Clássica'
-    },
-    'ametista': {
-        url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
-        description: 'Ametista FM'
-    }
-};
+    const STREAMS = {
+        'maraba': {
+            url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
+            description: 'Marabá'
+        },
+        'imaculado': {
+            url: 'http://r13.ciclano.io:9033/live',
+            description: 'Voz do Coração Imaculado'
+        },
+        'classica': {
+            url: 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128',
+            description: 'Clássica'
+        },
+        'ametista': {
+            url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
+            description: 'Ametista FM'
+        },
+        'live': {  // ADICIONADO: Stream ao vivo do seu Icecast no Render
+            url: 'http://webradio-paroquia.onrender.com:8000/live',  // Esta é a URL correta do seu Icecast
+            description: 'AO VIVO - Missa'
+        }
+    };
+
 
 // ===== VARIÁVEIS GLOBAIS =====
 let currentStream = STREAMS.imaculado;
