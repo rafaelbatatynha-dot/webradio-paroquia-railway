@@ -8,7 +8,7 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const url = require('url');
-const { spawn } = require('child_process');  // ✅ NOVO: para iniciar Icecast e Nginx
+const { spawn, exec } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
@@ -23,7 +23,7 @@ app.use(cors());
 app.use(express.static('public'));
 
 // ===== CONFIGURAÇÃO =====
-const PORT = process.env.PORT || 10000;  // ✅ CORRIGIDO: porta 10000 (não 3000)
+const PORT = process.env.PORT || 10000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
 // Streams de rádio
@@ -40,15 +40,11 @@ const STREAMS = {
         url: 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128',
         description: 'Clássica'
     },
-    'ametista': {
-        url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
-        description: 'Ametista FM'
+    'live': {
+        url: 'http://localhost:8000/live',
+        description: 'Transmissão ao Vivo'
     },
-    'live': {  // ✅ CORRIGIDO: URL interna do Icecast
-        url: 'http://localhost:8000/live',  // ✅ Icecast roda internamente na porta 8000
-        description: 'AO VIVO - Missa'
-    },
-    'missa': {  // ✅ NOVO: mount point específico para a missa
+    'missa': {
         url: 'http://localhost:8000/missa',
         description: 'Missa de Sábado'
     }
@@ -60,25 +56,179 @@ let messages = [];
 let isPlayingMessage = false;
 let messageTimeout = null;
 let clients = [];
-let icecastProcess = null;  // ✅ NOVO: processo do Icecast
-let nginxProcess = null;    // ✅ NOVO: processo do Nginx
+let icecastProcess = null;
+let nginxProcess = null;
+
+// ===== CRIAR CONFIGURAÇÃO DO ICECAST =====
+function createIcecastConfig() {
+    const icecastXml = `<icecast>
+    <limits>
+        <clients>100</clients>
+        <sources>5</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <burst-size>65536</burst-size>
+    </limits>
+
+    <authentication>
+        <source-password>webradio_source_2025</source-password>
+        <relay-password>webradio_relay_2025</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>webradio_admin_2025</admin-password>
+    </authentication>
+
+    <hostname>webradio-paroquia.onrender.com</hostname>
+
+    <listen-socket>
+        <port>8000</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+
+    <paths>
+        <basedir>/usr/share/icecast2</basedir>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <pidfile>/tmp/icecast2.pid</pidfile>
+    </paths>
+
+    <security>
+        <chroot>0</chroot>
+    </security>
+
+    <mount>
+        <mount-name>/missa</mount-name>
+        <stream-name>Missa ao Vivo</stream-name>
+        <stream-description>Transmissão da Missa de Sábado</stream-description>
+        <stream-url>https://webradio-paroquia.onrender.com</stream-url>
+        <genre>Religious</genre>
+        <type>audio/mpeg</type>
+        <bitrate>128</bitrate>
+        <public>1</public>
+        <fallback-mount>/live</fallback-mount>
+        <fallback-override>1</fallback-override>
+        <on-disconnect>/usr/local/bin/fallback-missa.sh</on-disconnect>
+    </mount>
+
+    <mount>
+        <mount-name>/live</mount-name>
+        <stream-name>Rádio Paróquia - Ao Vivo</stream-name>
+        <stream-description>Programação 24 horas</stream-description>
+        <stream-url>https://webradio-paroquia.onrender.com</stream-url>
+        <genre>Religious</genre>
+        <type>audio/mpeg</type>
+        <bitrate>128</bitrate>
+        <public>1</public>
+    </mount>
+</icecast>`;
+
+    try {
+        fs.writeFileSync('/tmp/icecast.xml', icecastXml);
+        console.log('✅ Arquivo icecast.xml criado em /tmp/icecast.xml');
+        return '/tmp/icecast.xml';
+    } catch (error) {
+        console.error('❌ Erro ao criar icecast.xml:', error.message);
+        return null;
+    }
+}
+
+// ===== CRIAR CONFIGURAÇÃO DO NGINX =====
+function createNginxConfig() {
+    const nginxConf = `worker_processes auto;
+pid /tmp/nginx.pid;
+error_log /tmp/nginx_error.log;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log /tmp/nginx_access.log;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    server {
+        listen 10000;
+        server_name _;
+
+        # Página principal (Node.js)
+        location / {
+            proxy_pass http://localhost:3000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Streams Icecast
+        location ~ ^/(missa|live|admin|status) {
+            proxy_pass http://localhost:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_buffering off;
+            proxy_cache off;
+
+            add_header Access-Control-Allow-Origin *;
+            add_header Cache-Control no-cache;
+        }
+
+        location /status.xsl {
+            proxy_pass http://localhost:8000/status.xsl;
+        }
+    }
+}`;
+
+    try {
+        fs.writeFileSync('/tmp/nginx.conf', nginxConf);
+        console.log('✅ Arquivo nginx.conf criado em /tmp/nginx.conf');
+        return '/tmp/nginx.conf';
+    } catch (error) {
+        console.error('❌ Erro ao criar nginx.conf:', error.message);
+        return null;
+    }
+}
+
+// ===== VERIFICAR SE ICECAST ESTÁ INSTALADO =====
+function checkIcecastInstalled() {
+    return new Promise((resolve) => {
+        exec('which icecast2', (error, stdout) => {
+            resolve(!error && stdout.trim().length > 0);
+        });
+    });
+}
+
+// ===== VERIFICAR SE NGINX ESTÁ INSTALADO =====
+function checkNginxInstalled() {
+    return new Promise((resolve) => {
+        exec('which nginx', (error, stdout) => {
+            resolve(!error && stdout.trim().length > 0);
+        });
+    });
+}
 
 // ===== INICIAR ICECAST =====
-function startIcecast() {
+async function startIcecast() {
     try {
+        const isInstalled = await checkIcecastInstalled();
+
+        if (!isInstalled) {
+            console.log('⚠️ Icecast não está instalado neste ambiente');
+            return false;
+        }
+
+        const configPath = createIcecastConfig();
+        if (!configPath) return false;
+
         console.log('📡 Iniciando Icecast...');
 
-        // Substitui variáveis de ambiente no icecast.xml
-        const icecastTemplate = fs.readFileSync('/app/icecast.xml.template', 'utf8');
-        const icecastConfig = icecastTemplate
-            .replace(/\${ICECAST_SOURCE_PASSWORD}/g, process.env.ICECAST_SOURCE_PASSWORD || 'webradio_source_2025')
-            .replace(/\${ICECAST_RELAY_PASSWORD}/g, process.env.ICECAST_RELAY_PASSWORD || 'webradio_relay_2025')
-            .replace(/\${ICECAST_ADMIN_PASSWORD}/g, process.env.ICECAST_ADMIN_PASSWORD || 'webradio_admin_2025')
-            .replace(/\${ICECAST_HOSTNAME}/g, process.env.ICECAST_HOSTNAME || 'webradio-paroquia.onrender.com');
-
-        fs.writeFileSync('/etc/icecast2/icecast.xml', icecastConfig);
-
-        icecastProcess = spawn('icecast2', ['-c', '/etc/icecast2/icecast.xml'], {
+        icecastProcess = spawn('icecast2', ['-c', configPath], {
             stdio: 'inherit'
         });
 
@@ -88,22 +238,33 @@ function startIcecast() {
 
         icecastProcess.on('exit', (code) => {
             console.log(`⚠️ Icecast encerrado com código ${code}`);
-            // Reinicia automaticamente após 5 segundos
-            setTimeout(startIcecast, 5000);
+            setTimeout(() => startIcecast(), 5000);
         });
 
         console.log('✅ Icecast iniciado com sucesso');
+        return true;
     } catch (error) {
         console.error('❌ Erro ao iniciar Icecast:', error.message);
+        return false;
     }
 }
 
 // ===== INICIAR NGINX =====
-function startNginx() {
+async function startNginx() {
     try {
+        const isInstalled = await checkNginxInstalled();
+
+        if (!isInstalled) {
+            console.log('⚠️ Nginx não está instalado neste ambiente');
+            return false;
+        }
+
+        const configPath = createNginxConfig();
+        if (!configPath) return false;
+
         console.log('🌐 Iniciando Nginx...');
 
-        nginxProcess = spawn('nginx', ['-c', '/app/nginx.conf', '-g', 'daemon off;'], {
+        nginxProcess = spawn('nginx', ['-c', configPath, '-g', 'daemon off;'], {
             stdio: 'inherit'
         });
 
@@ -113,13 +274,14 @@ function startNginx() {
 
         nginxProcess.on('exit', (code) => {
             console.log(`⚠️ Nginx encerrado com código ${code}`);
-            // Reinicia automaticamente após 5 segundos
-            setTimeout(startNginx, 5000);
+            setTimeout(() => startNginx(), 5000);
         });
 
         console.log('✅ Nginx iniciado com sucesso');
+        return true;
     } catch (error) {
         console.error('❌ Erro ao iniciar Nginx:', error.message);
+        return false;
     }
 }
 
@@ -196,7 +358,7 @@ async function playSequentialMessages() {
             name: message.name,
             url: message.url
         });
-        await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // 60 segundos por mensagem
+        await new Promise(resolve => setTimeout(resolve, 60 * 1000));
     }
     console.log('⏹️ Bloco de mensagens finalizado.');
     isPlayingMessage = false;
@@ -207,7 +369,7 @@ async function playSequentialMessages() {
     });
 }
 
-// ===== FUNÇÃO PARA TOCAR MENSAGENS A CADA 30 MINUTOS (01:00 - 05:00) =====
+// ===== FUNÇÃO PARA TOCAR MENSAGENS A CADA 30 MINUTOS =====
 async function playMessageEvery30Minutes() {
     if (messages.length === 0) return;
     const randomMessage = messages[Math.floor(Math.random() * messages.length)];
@@ -216,7 +378,7 @@ async function playMessageEvery30Minutes() {
         name: randomMessage.name,
         url: randomMessage.url
     });
-    await new Promise(resolve => setTimeout(resolve, 60 * 1000)); // 60 segundos por mensagem
+    await new Promise(resolve => setTimeout(resolve, 60 * 1000));
     io.emit('stop-mensagem');
     io.emit('play-stream', {
         url: '/stream',
@@ -232,27 +394,19 @@ function setupSchedule() {
     cron.schedule('10 0 * * *', () => {
         console.log('🎼 00:10 - Mudando para Clássica');
         currentStream = STREAMS.classica;
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // 01:00, 01:30, 02:00, 02:30, 03:00, 03:30, 04:00, 04:30 - Mensagens a cada 30 min
+    // 01:00-05:00 - Mensagens a cada 30 min
     cron.schedule('0,30 1-4 * * *', () => {
-        if (!isPlayingMessage) {
-            playMessageEvery30Minutes();
-        }
+        if (!isPlayingMessage) playMessageEvery30Minutes();
     });
 
     // 05:00 - Retorna para Voz do Imaculado
     cron.schedule('0 5 * * *', () => {
         console.log('📻 05:00 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
     // 11:00 - Inicia bloco de mensagens diárias
@@ -267,30 +421,21 @@ function setupSchedule() {
         isPlayingMessage = false;
         currentStream = STREAMS.imaculado;
         io.emit('stop-mensagem');
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // ✅ NOVO: Sábado 19:00 - Muda para stream da missa
+    // Sábado 19:00 - Muda para transmissão da missa
     cron.schedule('0 19 * * 6', () => {
         console.log('⛪ 19:00 (Sábado) - Mudando para transmissão da Missa');
         currentStream = STREAMS.missa;
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // ✅ NOVO: Sábado 20:30 - Retorna para programação normal
+    // Sábado 20:30 - Retorna para programação normal
     cron.schedule('30 20 * * 6', () => {
         console.log('📻 20:30 (Sábado) - Retornando para programação normal');
         currentStream = STREAMS.imaculado;
-        io.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
     console.log('✅ Agendamento configurado com sucesso');
@@ -309,7 +454,7 @@ app.get('/stream', (req, res) => {
             path: streamUrl.pathname + streamUrl.search,
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0',
                 'Icy-MetaData': '0'
             },
             timeout: 15000
@@ -326,44 +471,45 @@ app.get('/stream', (req, res) => {
             streamRes.pipe(res);
             streamRes.on('error', (err) => {
                 console.error('❌ Erro ao receber stream:', err.message);
-                if (!res.headersSent) {
-                    res.status(500).send('Erro ao carregar stream');
-                }
+                if (!res.headersSent) res.status(500).send('Erro ao carregar stream');
             });
         });
 
         request.on('error', (err) => {
             console.error('❌ Erro na requisição do stream:', err.message);
-            if (!res.headersSent) {
-                res.status(500).send('Erro ao carregar stream');
-            }
+            if (!res.headersSent) res.status(500).send('Erro ao carregar stream');
         });
 
         request.on('timeout', () => {
             console.error('❌ Timeout ao conectar no stream');
             request.destroy();
-            if (!res.headersSent) {
-                res.status(504).send('Timeout ao carregar stream');
-            }
+            if (!res.headersSent) res.status(504).send('Timeout ao carregar stream');
         });
 
         request.end();
     } catch (error) {
         console.error('❌ Erro na rota /stream:', error.message);
-        if (!res.headersSent) {
-            res.status(500).send('Erro ao carregar stream');
-        }
+        if (!res.headersSent) res.status(500).send('Erro ao carregar stream');
     }
 });
 
-// ✅ NOVO: Rota de health check
+// ===== ROTA DE HEALTH CHECK =====
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         icecast: icecastProcess ? 'running' : 'stopped',
         nginx: nginxProcess ? 'running' : 'stopped',
         messages: messages.length,
-        currentStream: currentStream.description
+        currentStream: currentStream.description,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ===== ROTA PARA LISTAR MENSAGENS =====
+app.get('/api/messages', (req, res) => {
+    res.json({
+        total: messages.length,
+        messages: messages
     });
 });
 
@@ -371,10 +517,7 @@ app.get('/health', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`✅ Cliente conectado: ${socket.id}`);
     clients.push(socket.id);
-    socket.emit('play-stream', {
-        url: '/stream',
-        description: currentStream.description
-    });
+    socket.emit('play-stream', { url: '/stream', description: currentStream.description });
 
     socket.on('disconnect', () => {
         console.log(`❌ Cliente desconectado: ${socket.id}`);
@@ -382,31 +525,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('get-current-stream', () => {
-        socket.emit('play-stream', {
-            url: '/stream',
-            description: currentStream.description
-        });
+        socket.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 });
 
 // ===== INICIALIZAÇÃO DO SERVIDOR =====
 async function startServer() {
     try {
-        // ✅ NOVO: Inicia Icecast e Nginx primeiro
-        if (fs.existsSync('/app/icecast.xml.template')) {
-            startIcecast();
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Aguarda 5s
+        // Tenta iniciar Icecast e Nginx
+        const icecastStarted = await startIcecast();
+        if (icecastStarted) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
 
-        if (fs.existsSync('/app/nginx.conf')) {
-            startNginx();
-            await new Promise(resolve => setTimeout(resolve, 3000)); // Aguarda 3s
+        const nginxStarted = await startNginx();
+        if (nginxStarted) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
         await initializeGoogleDrive();
         setupSchedule();
 
-        server.listen(PORT, () => {
+        server.listen(3000, () => {
             console.log(`\n╔═════════════════════════════════════════════════════╗`);
             console.log(`║                                                     ║`);
             console.log(`║  📡 Servidor iniciado com sucesso na porta ${PORT}  ║`);
@@ -416,8 +556,9 @@ async function startServer() {
             console.log(`║  🎼 Clássica: 00h10-05h00 (msgs a cada 30min)       ║`);
             console.log(`║  ⏰ Bloco de Mensagens: 11h00-12h00 (TODOS OS DIAS) ║`);
             console.log(`║  🗣️ Mensagens noturnas: a cada 30 min (01-05h)     ║`);
-            console.log(`║  ⛪ Missa: Sábado 19h00-20h30                       ║`);
+            console.log(`║  ⛪ Missa: Sábado 19h00-20h30 (via P2/Opticodec)   ║`);
             console.log(`║  🎙️ Icecast: ${icecastProcess ? 'Ativo' : 'Inativo'}                              ║`);
+            console.log(`║  🌐 Nginx: ${nginxProcess ? 'Ativo' : 'Inativo'}                                ║`);
             console.log(`║  🌐 URL: https://webradio-paroquia.onrender.com     ║`);
             console.log(`║                                                     ║`);
             console.log(`╚═════════════════════════════════════════════════════╝\n`);
@@ -428,8 +569,14 @@ async function startServer() {
     }
 }
 
-// ✅ NOVO: Encerra processos ao fechar o servidor
 process.on('SIGTERM', () => {
+    console.log('⚠️ Encerrando servidor...');
+    if (icecastProcess) icecastProcess.kill();
+    if (nginxProcess) nginxProcess.kill();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
     console.log('⚠️ Encerrando servidor...');
     if (icecastProcess) icecastProcess.kill();
     if (nginxProcess) nginxProcess.kill();
