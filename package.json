@@ -12,10 +12,9 @@
     "express": "^4.19.2",
     "googleapis": "^140.0.1",
     "node-cron": "^3.0.3",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "ytdl-core": "^4.11.5"
   },
-  "devDependencies": {},
   "author": "Rafael",
   "license": "ISC"
 }
-
