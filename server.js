@@ -24,7 +24,7 @@ const YOUTUBE_MISSA_VIDEO_ID = 'ZlXnuZcaJ2Y';
 const STREAMS = {
   maraba: {
     url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
-    description: 'Marabá'
+    description: 'Rádio Marabá'
   },
   imaculado: {
     url: 'http://r13.ciclano.io:9033/live',
@@ -36,13 +36,35 @@ const STREAMS = {
   },
   missa: {
     url: `https://www.youtube.com/watch?v=${YOUTUBE_MISSA_VIDEO_ID}`,
-    description: 'Missa de Sábado'
+    description: 'Missa de Sábado (YouTube)'
   }
 };
 
 let currentStream = STREAMS.imaculado;
 let messages = [];
 let isPlayingMessage = false;
+
+// Função para obter hora do Brasil (UTC-3)
+function getBrazilTime() {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const brazilTime = new Date(utc + (3600000 * -3));
+  return brazilTime;
+}
+
+function logBrazilTime(message) {
+  const br = getBrazilTime();
+  const timeStr = br.toLocaleString('pt-BR', { 
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  console.log(`[${timeStr} BR] ${message}`);
+}
 
 async function authenticateGoogleDrive() {
   try {
@@ -53,10 +75,10 @@ async function authenticateGoogleDrive() {
       credentials,
       scopes: ['https://www.googleapis.com/auth/drive.readonly']
     });
-    console.log('✅ Google Drive autenticado');
+    logBrazilTime('✅ Google Drive autenticado');
     return auth;
   } catch (err) {
-    console.error('❌ Erro Google Drive:', err.message);
+    logBrazilTime(`❌ Erro Google Drive: ${err.message}`);
     throw err;
   }
 }
@@ -76,9 +98,9 @@ async function loadMessagesFromGoogleDrive(auth) {
       name: f.name,
       url: `https://drive.google.com/uc?id=${f.id}&export=download`
     }));
-    console.log(`✅ ${messages.length} mensagens carregadas`);
+    logBrazilTime(`✅ ${messages.length} mensagens carregadas`);
   } catch (err) {
-    console.error('❌ Erro ao carregar mensagens:', err.message);
+    logBrazilTime(`❌ Erro ao carregar mensagens: ${err.message}`);
     messages = [];
   }
 }
@@ -90,18 +112,20 @@ async function initializeGoogleDrive() {
 
 async function playSequentialMessages() {
   if (messages.length === 0) {
-    console.log('⚠️ Sem mensagens');
+    logBrazilTime('⚠️ Sem mensagens');
     return;
   }
   isPlayingMessage = true;
-  console.log(`📢 [${new Date().toLocaleString('pt-BR')}] Bloco de ${messages.length} mensagens`);
+  logBrazilTime(`📢 Iniciando bloco de ${messages.length} mensagens`);
+
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    console.log(`📢 ${i + 1}/${messages.length}: ${msg.name}`);
+    logBrazilTime(`📢 ${i + 1}/${messages.length}: ${msg.name}`);
     io.emit('play-mensagem', { name: msg.name, url: msg.url });
     await new Promise(res => setTimeout(res, 60000));
   }
-  console.log(`⏹️ [${new Date().toLocaleString('pt-BR')}] Fim do bloco`);
+
+  logBrazilTime('⏹️ Fim do bloco de mensagens');
   isPlayingMessage = false;
   io.emit('stop-mensagem');
   io.emit('play-stream', { url: '/stream', description: currentStream.description });
@@ -110,7 +134,7 @@ async function playSequentialMessages() {
 async function playRandomMessage() {
   if (messages.length === 0) return;
   const msg = messages[Math.floor(Math.random() * messages.length)];
-  console.log(`📢 [${new Date().toLocaleString('pt-BR')}] Mensagem: ${msg.name}`);
+  logBrazilTime(`📢 Mensagem: ${msg.name}`);
   isPlayingMessage = true;
   io.emit('play-mensagem', { name: msg.name, url: msg.url });
   await new Promise(res => setTimeout(res, 60000));
@@ -120,58 +144,97 @@ async function playRandomMessage() {
 }
 
 function setupSchedule() {
-  console.log('⏰ Configurando agendamentos...');
-  console.log(`🕐 Timezone: ${process.env.TZ || 'padrão do sistema'}`);
-  console.log(`🕐 Hora atual: ${new Date().toLocaleString('pt-BR')}`);
+  logBrazilTime('⏰ Configurando agendamentos (UTC → Brasil)...');
 
-  cron.schedule('10 0 * * *', () => {
-    console.log(`🎼 [${new Date().toLocaleString('pt-BR')}] 00:10 - Clássica`);
+  // ===== PROGRAMAÇÃO DIÁRIA =====
+
+  // Brasil 00:10 = UTC 03:10 → Música Clássica
+  cron.schedule('10 3 * * *', () => {
+    logBrazilTime('🎼 00:10 BR - Música Clássica');
     currentStream = STREAMS.classica;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  cron.schedule('15,30,45 0 * * *', () => {
-    console.log(`📢 [${new Date().toLocaleString('pt-BR')}] Mensagem noturna`);
+  // Mensagens a cada 15 min durante clássica (00:15-04:45 BR = 03:15-07:45 UTC)
+  cron.schedule('15,30,45 3 * * *', () => {
+    logBrazilTime('📢 Mensagem noturna (00h BR)');
     if (!isPlayingMessage) playRandomMessage();
   });
 
-  cron.schedule('0,15,30,45 1-2 * * *', () => {
-    console.log(`📢 [${new Date().toLocaleString('pt-BR')}] Mensagem noturna`);
+  cron.schedule('0,15,30,45 4-7 * * *', () => {
+    logBrazilTime('📢 Mensagem noturna (01h-04h BR)');
     if (!isPlayingMessage) playRandomMessage();
   });
 
-  cron.schedule('0 3 * * *', () => {
-    console.log(`📻 [${new Date().toLocaleString('pt-BR')}] 03:00 - Imaculado`);
+  // Brasil 05:00 = UTC 08:00 → Volta Imaculado
+  cron.schedule('0 8 * * *', () => {
+    logBrazilTime('📻 05:00 BR - Voz do Imaculado');
     currentStream = STREAMS.imaculado;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  cron.schedule('0 11 * * *', () => {
-    console.log(`📢 [${new Date().toLocaleString('pt-BR')}] 11:00 - Bloco diário`);
+  // Brasil 11:00 = UTC 14:00 → Bloco de mensagens diário
+  cron.schedule('0 14 * * *', () => {
+    logBrazilTime('📢 11:00 BR - Bloco de mensagens diário');
     playSequentialMessages();
   });
 
-  cron.schedule('0 12 * * *', () => {
-    console.log(`📻 [${new Date().toLocaleString('pt-BR')}] 12:00 - Imaculado`);
+  // Brasil 12:00 = UTC 15:00 → Volta Imaculado
+  cron.schedule('0 15 * * *', () => {
+    logBrazilTime('📻 12:00 BR - Volta Imaculado');
     isPlayingMessage = false;
     currentStream = STREAMS.imaculado;
     io.emit('stop-mensagem');
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  cron.schedule('0 19 * * 6', () => {
-    console.log(`⛪ [${new Date().toLocaleString('pt-BR')}] Sábado 19:00 - Missa`);
-    currentStream = STREAMS.missa;
+  // ===== SÁBADO =====
+
+  // Brasil Sáb 12:50 = UTC 15:50 → Informativo Paroquial (Rádio Marabá)
+  cron.schedule('50 15 * * 6', () => {
+    logBrazilTime('📰 Sábado 12:50 BR - Informativo Paroquial (Rádio Marabá)');
+    currentStream = STREAMS.maraba;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  cron.schedule('30 20 * * 6', () => {
-    console.log(`📻 [${new Date().toLocaleString('pt-BR')}] Sábado 20:30 - Imaculado`);
+  // Brasil Sáb 13:05 = UTC 16:05 → Volta Imaculado
+  cron.schedule('5 16 * * 6', () => {
+    logBrazilTime('📻 Sábado 13:05 BR - Volta Imaculado');
     currentStream = STREAMS.imaculado;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  console.log('✅ Agendamentos configurados');
+  // Brasil Sáb 19:00 = UTC 22:00 → Missa (YouTube)
+  cron.schedule('0 22 * * 6', () => {
+    logBrazilTime('⛪ Sábado 19:00 BR - Missa (YouTube)');
+    currentStream = STREAMS.missa;
+    io.emit('play-stream', { url: '/stream', description: currentStream.description });
+  });
+
+  // Brasil Sáb 20:30 = UTC 23:30 → Volta Imaculado
+  cron.schedule('30 23 * * 6', () => {
+    logBrazilTime('📻 Sábado 20:30 BR - Volta Imaculado');
+    currentStream = STREAMS.imaculado;
+    io.emit('play-stream', { url: '/stream', description: currentStream.description });
+  });
+
+  // ===== DOMINGO =====
+
+  // Brasil Dom 08:30 = UTC 11:30 → Missa (Rádio Marabá)
+  cron.schedule('30 11 * * 0', () => {
+    logBrazilTime('⛪ Domingo 08:30 BR - Missa (Rádio Marabá)');
+    currentStream = STREAMS.maraba;
+    io.emit('play-stream', { url: '/stream', description: currentStream.description });
+  });
+
+  // Brasil Dom 09:30 = UTC 12:30 → Volta Imaculado
+  cron.schedule('30 12 * * 0', () => {
+    logBrazilTime('📻 Domingo 09:30 BR - Volta Imaculado');
+    currentStream = STREAMS.imaculado;
+    io.emit('play-stream', { url: '/stream', description: currentStream.description });
+  });
+
+  logBrazilTime('✅ Agendamentos configurados (UTC → Brasil)');
 }
 
 app.get('/stream', async (req, res) => {
@@ -179,7 +242,7 @@ app.get('/stream', async (req, res) => {
     const streamUrl = currentStream.url;
 
     if (streamUrl.includes('youtube.com') || streamUrl.includes('youtu.be')) {
-      console.log('🎥 YouTube:', streamUrl);
+      logBrazilTime(`🎥 YouTube: ${streamUrl}`);
       try {
         const audioStream = ytdl(streamUrl, {
           filter: 'audioonly',
@@ -195,7 +258,7 @@ app.get('/stream', async (req, res) => {
 
         exec('which ffmpeg', (error) => {
           if (error) {
-            console.warn('⚠️ FFmpeg não encontrado');
+            logBrazilTime('⚠️ FFmpeg não encontrado');
             audioStream.pipe(res);
             return;
           }
@@ -209,25 +272,25 @@ app.get('/stream', async (req, res) => {
           ffmpeg.stdout.pipe(res);
 
           ffmpeg.on('error', (err) => {
-            console.error('❌ FFmpeg:', err.message);
+            logBrazilTime(`❌ FFmpeg: ${err.message}`);
             if (!res.headersSent) res.status(500).send('Erro FFmpeg');
           });
 
           audioStream.on('error', (err) => {
-            console.error('❌ ytdl:', err.message);
+            logBrazilTime(`❌ ytdl: ${err.message}`);
             ffmpeg.kill();
             if (!res.headersSent) res.status(500).send('Erro YouTube');
           });
 
           res.on('close', () => {
-            console.log('🔌 Cliente desconectou');
+            logBrazilTime('🔌 Cliente desconectou');
             ffmpeg.kill();
           });
         });
         return;
       } catch (ytErr) {
-        console.error('❌ YouTube:', ytErr.message);
-        console.log('⚠️ Voltando para Imaculado');
+        logBrazilTime(`❌ YouTube: ${ytErr.message}`);
+        logBrazilTime('⚠️ Voltando para Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', { url: '/stream', description: currentStream.description });
         if (!res.headersSent) res.status(500).send('Missa indisponível');
@@ -235,7 +298,7 @@ app.get('/stream', async (req, res) => {
       }
     }
 
-    console.log('🔗 Proxy:', streamUrl);
+    logBrazilTime(`🔗 Proxy: ${streamUrl}`);
     const target = new URL(streamUrl);
     const client = target.protocol === 'https:' ? https : http;
 
@@ -260,32 +323,32 @@ app.get('/stream', async (req, res) => {
     });
 
     reqStream.on('error', (err) => {
-      console.error('❌ Stream:', err.message);
+      logBrazilTime(`❌ Stream: ${err.message}`);
       if (!res.headersSent) res.status(500).send('Stream indisponível');
     });
 
     reqStream.on('timeout', () => {
-      console.error('⏱️ Timeout');
+      logBrazilTime('⏱️ Timeout');
       reqStream.destroy();
       if (!res.headersSent) res.status(504).send('Timeout');
     });
 
     reqStream.end();
   } catch (err) {
-    console.error('❌ /stream:', err.message);
+    logBrazilTime(`❌ /stream: ${err.message}`);
     if (!res.headersSent) res.status(500).send('Erro');
   }
 });
 
 app.get('/health', (req, res) => {
+  const br = getBrazilTime();
   res.json({
     status: 'ok',
     currentStream: currentStream.description,
     youtubeVideoId: YOUTUBE_MISSA_VIDEO_ID,
     messages: messages.length,
-    timezone: process.env.TZ || 'não definido',
-    serverTime: new Date().toString(),
-    serverTimeBR: new Date().toLocaleString('pt-BR')
+    serverTimeBR: br.toLocaleString('pt-BR'),
+    serverTimeUTC: new Date().toISOString()
   });
 });
 
@@ -294,9 +357,9 @@ app.get('/api/messages', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('✅ Cliente:', socket.id);
+  logBrazilTime(`✅ Cliente: ${socket.id}`);
   socket.emit('play-stream', { url: '/stream', description: currentStream.description });
-  socket.on('disconnect', () => console.log('❌ Cliente:', socket.id));
+  socket.on('disconnect', () => logBrazilTime(`❌ Cliente: ${socket.id}`));
   socket.on('get-current-stream', () => {
     socket.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
@@ -308,26 +371,28 @@ async function startServer() {
     setupSchedule();
 
     server.listen(PORT, () => {
+      const br = getBrazilTime();
       console.log('\n╔═══════════════════════════════════════════╗');
       console.log('║  📡 Servidor iniciado                     ║');
       console.log(`║  🌐 Porta: ${PORT}                           ║`);
-      console.log(`║  🕐 TZ: ${(process.env.TZ || 'padrão').padEnd(32, ' ')}║`);
-      console.log(`║  🕐 Hora: ${new Date().toLocaleString('pt-BR').padEnd(30, ' ')}║`);
+      console.log(`║  🕐 Hora BR: ${br.toLocaleString('pt-BR').padEnd(28, ' ')}║`);
       console.log(`║  📊 Mensagens: ${messages.length}                       ║`);
       console.log(`║  📻 Stream: ${currentStream.description.padEnd(28, ' ')}║`);
-      console.log('║  🎼 Clássica: 00h10–03h00                 ║');
-      console.log('║  📢 Mensagens: cada 15 min (00h–02h45)    ║');
-      console.log('║  🕚 Bloco: 11h–12h                        ║');
-      console.log('║  ⛪ Missa: sáb 19h–20h30                  ║');
+      console.log('║  🎼 Clássica: 00h10–05h00 BR              ║');
+      console.log('║  📢 Mensagens: cada 15 min (00h15–04h45)  ║');
+      console.log('║  🕚 Bloco: 11h–12h BR                     ║');
+      console.log('║  📰 Info Paroquial: Sáb 12h50–13h05 BR    ║');
+      console.log('║  ⛪ Missa Sáb: 19h–20h30 BR (YouTube)     ║');
+      console.log('║  ⛪ Missa Dom: 08h30–09h30 BR (Marabá)    ║');
       console.log('╚═══════════════════════════════════════════╝\n');
     });
   } catch (err) {
-    console.error('❌ Erro:', err.message);
+    logBrazilTime(`❌ Erro: ${err.message}`);
     process.exit(1);
   }
 }
 
-process.on('SIGTERM', () => { console.log('⚠️ Encerrando...'); process.exit(0); });
-process.on('SIGINT', () => { console.log('⚠️ Encerrando...'); process.exit(0); });
+process.on('SIGTERM', () => { logBrazilTime('⚠️ Encerrando...'); process.exit(0); });
+process.on('SIGINT', () => { logBrazilTime('⚠️ Encerrando...'); process.exit(0); });
 
 startServer();
