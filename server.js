@@ -27,8 +27,8 @@ app.use(express.static('public'));
 const PORT = process.env.PORT || 10000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
-// ⚠️ IMPORTANTE: Atualize o ID do vídeo do YouTube quando criar a transmissão
-const YOUTUBE_MISSA_VIDEO_ID = 'ZlXnuZcaJ2Y';  // ✅ TROQUE PELO ID REAL
+// ✅ CHAVE DO YOUTUBE JÁ INCLUÍDA
+const YOUTUBE_MISSA_VIDEO_ID = 'ZlXnuZcaJ2Y';
 
 // Streams de rádio
 const STREAMS = {
@@ -53,7 +53,6 @@ const STREAMS = {
 // ===== VARIÁVEIS GLOBAIS =====
 let currentStream = STREAMS.imaculado;
 let messages = [];
-let messagesCache = new Map(); // Cache em RAM
 let isPlayingMessage = false;
 let messageTimeout = null;
 let clients = [];
@@ -159,36 +158,39 @@ async function playMessageEvery30Minutes() {
     });
 }
 
-// ===== AGENDAMENTO COM CRON =====
+// ===== AGENDAMENTO COM CRON (CORRIGIDO) =====
 function setupSchedule() {
     console.log('⏰ Configurando agendamento de programação...');
 
-    // 00:10 - Muda para música clássica
+    // ✅ 00:10 - Muda para música clássica
     cron.schedule('10 0 * * *', () => {
-        console.log('🎼 00:10 - Mudando para Clássica');
+        console.log('🎼 00:10 - Mudando para Clássica (até 05:00)');
         currentStream = STREAMS.classica;
         io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // 01:00-05:00 - Mensagens a cada 30 min
+    // ✅ 01:00-04:30 - Mensagens a cada 30 min (durante clássica)
     cron.schedule('0,30 1-4 * * *', () => {
-        if (!isPlayingMessage) playMessageEvery30Minutes();
+        if (!isPlayingMessage) {
+            console.log('📢 Tocando mensagem noturna...');
+            playMessageEvery30Minutes();
+        }
     });
 
-    // 05:00 - Retorna para Voz do Imaculado
+    // ✅ 05:00 - Retorna para Voz do Imaculado
     cron.schedule('0 5 * * *', () => {
         console.log('📻 05:00 - Retornando para Voz do Coração Imaculado');
         currentStream = STREAMS.imaculado;
         io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // 11:00 - Inicia bloco de mensagens diárias
+    // ✅ 11:00 - Inicia bloco de mensagens diárias
     cron.schedule('0 11 * * *', () => {
         console.log('📢 11:00 - Iniciando bloco de mensagens diárias');
         playSequentialMessages();
     });
 
-    // 12:00 - Retorna para stream principal
+    // ✅ 12:00 - Retorna para stream principal
     cron.schedule('0 12 * * *', () => {
         console.log('📻 12:00 - Retornando para stream principal');
         isPlayingMessage = false;
@@ -197,14 +199,14 @@ function setupSchedule() {
         io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // Sábado 19:00 - Muda para transmissão da missa (YouTube)
+    // ✅ Sábado 19:00 - Muda para transmissão da missa (YouTube)
     cron.schedule('0 19 * * 6', () => {
         console.log('⛪ 19:00 (Sábado) - Mudando para transmissão da Missa (YouTube)');
         currentStream = STREAMS.missa;
         io.emit('play-stream', { url: '/stream', description: currentStream.description });
     });
 
-    // Sábado 20:30 - Retorna para programação normal
+    // ✅ Sábado 20:30 - Retorna para programação normal
     cron.schedule('30 20 * * 6', () => {
         console.log('📻 20:30 (Sábado) - Retornando para programação normal');
         currentStream = STREAMS.imaculado;
@@ -224,14 +226,10 @@ app.get('/stream', async (req, res) => {
             console.log("🎥 Extraindo áudio do YouTube:", streamUrl);
 
             try {
-                // Verifica se o vídeo existe e está disponível
-                const info = await ytdl.getInfo(streamUrl);
-                console.log(`✅ Vídeo encontrado: ${info.videoDetails.title}`);
-
                 const audioStream = ytdl(streamUrl, {
                     filter: 'audioonly',
                     quality: 'highestaudio',
-                    highWaterMark: 1 << 25 // Buffer maior para evitar travamentos
+                    highWaterMark: 1 << 25
                 });
 
                 res.setHeader('Content-Type', 'audio/mpeg');
@@ -240,7 +238,6 @@ app.get('/stream', async (req, res) => {
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.setHeader('Transfer-Encoding', 'chunked');
 
-                // Verifica se FFmpeg está disponível
                 exec('which ffmpeg', (error, stdout) => {
                     if (error) {
                         console.warn('⚠️ FFmpeg não encontrado, enviando áudio direto');
@@ -248,7 +245,6 @@ app.get('/stream', async (req, res) => {
                         return;
                     }
 
-                    // Converte o áudio para MP3 com FFmpeg
                     const ffmpeg = spawn('ffmpeg', [
                         '-i', 'pipe:0',
                         '-f', 'mp3',
@@ -262,10 +258,6 @@ app.get('/stream', async (req, res) => {
 
                     audioStream.pipe(ffmpeg.stdin);
                     ffmpeg.stdout.pipe(res);
-
-                    ffmpeg.stderr.on('data', (data) => {
-                        // Log silencioso do FFmpeg (apenas para debug)
-                    });
 
                     ffmpeg.on('error', (err) => {
                         console.error("❌ Erro FFmpeg:", err.message);
@@ -292,7 +284,6 @@ app.get('/stream', async (req, res) => {
             } catch (ytError) {
                 console.error("❌ Erro ao processar YouTube:", ytError.message);
 
-                // Se o vídeo não estiver disponível, volta para programação normal
                 if (ytError.message.includes('unavailable') || ytError.message.includes('private')) {
                     console.log('⚠️ Vídeo indisponível, retornando para programação normal');
                     currentStream = STREAMS.imaculado;
@@ -306,7 +297,7 @@ app.get('/stream', async (req, res) => {
             }
         }
 
-        // ✅ PROXY NORMAL PARA OUTRAS RÁDIOS (Marabá, Imaculado, Clássica)
+        // ✅ PROXY NORMAL PARA OUTRAS RÁDIOS
         console.log(`🔗 Proxying stream: ${streamUrl}`);
         const streamUrlObj = new URL(streamUrl);
         const client = streamUrlObj.protocol === 'https:' ? https : http;
@@ -320,7 +311,7 @@ app.get('/stream', async (req, res) => {
                 'User-Agent': 'Mozilla/5.0',
                 'Icy-MetaData': '0'
             },
-            timeout: 15000
+            timeout: 10000
         };
 
         const request = client.request(options, (streamRes) => {
@@ -346,99 +337,5 @@ app.get('/stream', async (req, res) => {
         request.on('timeout', () => {
             console.error('❌ Timeout ao conectar no stream');
             request.destroy();
-            if (!res.headersSent) res.status(504).send('Timeout ao carregar stream');
-        });
+            if (!res.headersSent) res.status
 
-        request.end();
-    } catch (error) {
-        console.error('❌ Erro na rota /stream:', error.message);
-        if (!res.headersSent) res.status(500).send('Erro ao carregar stream');
-    }
-});
-
-// ===== ROTA DE HEALTH CHECK =====
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        messages: messages.length,
-        currentStream: currentStream.description,
-        youtubeVideoId: YOUTUBE_MISSA_VIDEO_ID,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// ===== ROTA PARA LISTAR MENSAGENS =====
-app.get('/api/messages', (req, res) => {
-    res.json({
-        total: messages.length,
-        messages: messages
-    });
-});
-
-// ===== ROTA PARA ATUALIZAR ID DO YOUTUBE =====
-app.post('/api/update-youtube-id', express.json(), (req, res) => {
-    const { videoId } = req.body;
-    if (!videoId) {
-        return res.status(400).json({ error: 'videoId é obrigatório' });
-    }
-    YOUTUBE_MISSA_VIDEO_ID = videoId;
-    STREAMS.missa.url = `https://www.youtube.com/watch?v=${videoId}`;
-    console.log(`✅ ID do YouTube atualizado: ${videoId}`);
-    res.json({ success: true, videoId });
-});
-
-// ===== SOCKET.IO =====
-io.on('connection', (socket) => {
-    console.log(`✅ Cliente conectado: ${socket.id}`);
-    clients.push(socket.id);
-    socket.emit('play-stream', { url: '/stream', description: currentStream.description });
-
-    socket.on('disconnect', () => {
-        console.log(`❌ Cliente desconectado: ${socket.id}`);
-        clients = clients.filter(id => id !== socket.id);
-    });
-
-    socket.on('get-current-stream', () => {
-        socket.emit('play-stream', { url: '/stream', description: currentStream.description });
-    });
-});
-
-// ===== INICIALIZAÇÃO DO SERVIDOR =====
-async function startServer() {
-    try {
-        await initializeGoogleDrive();
-        setupSchedule();
-
-        server.listen(3000, () => {
-            console.log(`\n╔═════════════════════════════════════════════════════╗`);
-            console.log(`║                                                     ║`);
-            console.log(`║  📡 Servidor iniciado com sucesso na porta ${PORT}  ║`);
-            console.log(`║  📂 Google Drive: ${GOOGLE_DRIVE_FOLDER_ID}        ║`);
-            console.log(`║  📊 Mensagens carregadas: ${messages.length}  ║`);
-            console.log(`║  📻 Stream principal: ${currentStream.description}  ║`);
-            console.log(`║  🎼 Clássica: 00h10-05h00 (msgs a cada 30min)       ║`);
-            console.log(`║  ⏰ Bloco de Mensagens: 11h00-12h00 (TODOS OS DIAS) ║`);
-            console.log(`║  🗣️ Mensagens noturnas: a cada 30 min (01-05h)     ║`);
-            console.log(`║  ⛪ Missa: Sábado 19h00-20h30 (via YouTube)        ║`);
-            console.log(`║  🎥 YouTube Video ID: ${YOUTUBE_MISSA_VIDEO_ID}    ║`);
-            console.log(`║  🌐 URL: https://webradio-paroquia.onrender.com     ║`);
-            console.log(`║                                                     ║`);
-            console.log(`╚═════════════════════════════════════════════════════╝\n`);
-        });
-    } catch (error) {
-        console.error('❌ Erro ao iniciar servidor:', error.message);
-        process.exit(1);
-    }
-}
-
-process.on('SIGTERM', () => {
-    console.log('⚠️ Encerrando servidor...');
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    console.log('⚠️ Encerrando servidor...');
-    process.exit(0);
-});
-
-startServer();
