@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 10000;
 const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
 
 // ⚠️ IMPORTANTE: Atualize o ID do vídeo do YouTube quando criar a transmissão
-const YOUTUBE_MISSA_VIDEO_ID = 'SEU_VIDEO_ID_AQUI';  // ✅ TROQUE PELO ID REAL
+const YOUTUBE_MISSA_VIDEO_ID = 'ZlXnuZcaJ2Y';  // ✅ TROQUE PELO ID REAL
 
 // Streams de rádio
 const STREAMS = {
