@@ -44,7 +44,6 @@ let currentStream = STREAMS.imaculado;
 let messages = [];
 let isPlayingMessage = false;
 
-// Função para obter hora do Brasil (UTC-3)
 function getBrazilTime() {
   const now = new Date();
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
@@ -146,16 +145,12 @@ async function playRandomMessage() {
 function setupSchedule() {
   logBrazilTime('⏰ Configurando agendamentos (UTC → Brasil)...');
 
-  // ===== PROGRAMAÇÃO DIÁRIA =====
-
-  // Brasil 00:10 = UTC 03:10 → Música Clássica
   cron.schedule('10 3 * * *', () => {
     logBrazilTime('🎼 00:10 BR - Música Clássica');
     currentStream = STREAMS.classica;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Mensagens a cada 15 min durante clássica (00:15-04:45 BR = 03:15-07:45 UTC)
   cron.schedule('15,30,45 3 * * *', () => {
     logBrazilTime('📢 Mensagem noturna (00h BR)');
     if (!isPlayingMessage) playRandomMessage();
@@ -166,20 +161,17 @@ function setupSchedule() {
     if (!isPlayingMessage) playRandomMessage();
   });
 
-  // Brasil 05:00 = UTC 08:00 → Volta Imaculado
   cron.schedule('0 8 * * *', () => {
     logBrazilTime('📻 05:00 BR - Voz do Imaculado');
     currentStream = STREAMS.imaculado;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Brasil 11:00 = UTC 14:00 → Bloco de mensagens diário
   cron.schedule('0 14 * * *', () => {
     logBrazilTime('📢 11:00 BR - Bloco de mensagens diário');
     playSequentialMessages();
   });
 
-  // Brasil 12:00 = UTC 15:00 → Volta Imaculado
   cron.schedule('0 15 * * *', () => {
     logBrazilTime('📻 12:00 BR - Volta Imaculado');
     isPlayingMessage = false;
@@ -188,46 +180,36 @@ function setupSchedule() {
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // ===== SÁBADO =====
-
-  // Brasil Sáb 12:50 = UTC 15:50 → Informativo Paroquial (Rádio Marabá)
   cron.schedule('50 15 * * 6', () => {
     logBrazilTime('📰 Sábado 12:50 BR - Informativo Paroquial (Rádio Marabá)');
     currentStream = STREAMS.maraba;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Brasil Sáb 13:05 = UTC 16:05 → Volta Imaculado
   cron.schedule('5 16 * * 6', () => {
     logBrazilTime('📻 Sábado 13:05 BR - Volta Imaculado');
     currentStream = STREAMS.imaculado;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Brasil Sáb 19:00 = UTC 22:00 → Missa (YouTube)
   cron.schedule('0 22 * * 6', () => {
     logBrazilTime('⛪ Sábado 19:00 BR - Missa (YouTube)');
     currentStream = STREAMS.missa;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Brasil Sáb 20:30 = UTC 23:30 → Volta Imaculado
   cron.schedule('30 23 * * 6', () => {
     logBrazilTime('📻 Sábado 20:30 BR - Volta Imaculado');
     currentStream = STREAMS.imaculado;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // ===== DOMINGO =====
-
-  // Brasil Dom 08:30 = UTC 11:30 → Missa (Rádio Marabá)
   cron.schedule('30 11 * * 0', () => {
     logBrazilTime('⛪ Domingo 08:30 BR - Missa (Rádio Marabá)');
     currentStream = STREAMS.maraba;
     io.emit('play-stream', { url: '/stream', description: currentStream.description });
   });
 
-  // Brasil Dom 09:30 = UTC 12:30 → Volta Imaculado
   cron.schedule('30 12 * * 0', () => {
     logBrazilTime('📻 Domingo 09:30 BR - Volta Imaculado');
     currentStream = STREAMS.imaculado;
