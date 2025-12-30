@@ -1,0 +1,7 @@
+node_modules/
+credentials.json
+ffmpeg-cache/
+*.log
+.env
+.DS_Store
+
