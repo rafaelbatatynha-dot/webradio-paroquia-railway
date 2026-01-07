@@ -1,4 +1,4 @@
-// server.js – Web Rádio Paróquia (versão sem timezone, usando horário UTC do servidor)
+// server.js – Web Rádio Paróquia (versão de TESTE RÁPIDO do cron)
 
 const express = require('express');
 const http = require('http');
@@ -122,122 +122,27 @@ function resumeStream() {
     });
 }
 
-async function playRandomMessage() {
-    if (isPlayingMessage || messages.length === 0) return;
+// Funções playRandomMessage e playSequentialMessages removidas para este teste.
 
-    const msg = messages[Math.floor(Math.random() * messages.length)];
+// ---------------------- AGENDAMENTOS (TESTE RÁPIDO - UTC) ----------------------
+// Alterna entre Imaculado e Missa YouTube a cada 2 minutos.
 
-    isPlayingMessage = true;
-    io.emit("play-mensagem", msg);
+let testToggle = true; // true = Imaculado, false = Missa YouTube
 
-    log("Mensagem aleatória: " + msg.name);
-
-    await new Promise(r => setTimeout(r, 60000));
-
-    isPlayingMessage = false;
-    resumeStream();
-}
-
-async function playSequentialMessages() {
-    if (isPlayingMessage || messages.length === 0) return;
-
-    blockRunning = true;
-    previousStream = currentStream;
-    isPlayingMessage = true;
-
-    log("Início do bloco 11h (UTC 14h)");
-
-    for (const msg of messages) {
-        io.emit("play-mensagem", msg);
-        await new Promise(r => setTimeout(r, 60000));
+cron.schedule("*/2 * * * *", () => { // A cada 2 minutos
+    if (testToggle) {
+        currentStream = STREAMS.missaYoutube;
+        log("TESTE CRON: Trocando para Missa YouTube.");
+    } else {
+        currentStream = STREAMS.imaculado;
+        log("TESTE CRON: Trocando para Voz do Coração Imaculado.");
     }
-
-    log("Fim bloco 11h");
-
-    isPlayingMessage = false;
-    blockRunning = false;
-
-    currentStream = previousStream;
-    resumeStream();
-}
-
-// ---------------------- AGENDAMENTOS (UTC) ----------------------
-// Servidor UTC = Brasil + 3h
-
-// Clássica 00:10 BR = 03:10 UTC
-cron.schedule("10 3 * * *", () => {
-    currentStream = STREAMS.classica;
-    log("03:10 UTC – Música Clássica");
+    testToggle = !testToggle; // Inverte para a próxima vez
     resumeStream();
 });
 
-// Mensagens madrugada → 03h–07h UTC
-cron.schedule("*/15 3-7 * * *", () => {
-    playRandomMessage();
-});
+log("Agendamento de teste rápido carregado: troca a cada 2 minutos.");
 
-// Volta Imaculado 05:00 BR = 08:00 UTC
-cron.schedule("0 8 * * *", () => {
-    currentStream = STREAMS.imaculado;
-    log("08:00 UTC – Volta Imaculado");
-    resumeStream();
-});
-
-// Bloco diário 11h BR = 14h UTC
-cron.schedule("0 14 * * *", () => {
-    playSequentialMessages();
-});
-
-// Fim bloco 12h BR = 15h UTC
-cron.schedule("0 15 * * *", () => {
-    currentStream = STREAMS.imaculado;
-    isPlayingMessage = false;
-    blockRunning = false;
-    log("15:00 UTC – Fim Bloco 11h");
-    resumeStream();
-});
-
-// Sábado Informativo 12:50 BR = 15:50 UTC
-cron.schedule("50 15 * * 6", () => {
-    currentStream = STREAMS.maraba;
-    log("15:50 UTC – Informativo Paroquial");
-    resumeStream();
-});
-
-// Sábado volta 13:05 BR = 16:05 UTC
-cron.schedule("5 16 * * 6", () => {
-    currentStream = STREAMS.imaculado;
-    log("16:05 UTC – Fim Informativo");
-    resumeStream();
-});
-
-// Domingo 08:30 BR = 11:30 UTC
-cron.schedule("30 11 * * 0", () => {
-    currentStream = STREAMS.maraba;
-    log("11:30 UTC – Missa Domingo Marabá");
-    resumeStream();
-});
-
-// Domingo volta 09:30 BR = 12:30 UTC
-cron.schedule("30 12 * * 0", () => {
-    currentStream = STREAMS.imaculado;
-    log("12:30 UTC – Fim Missa Domingo Marabá");
-    resumeStream();
-});
-
-// Sábado Missa 19:00 BR = 22:00 UTC
-cron.schedule("0 22 * * 6", () => {
-    currentStream = STREAMS.missaYoutube;
-    log("22:00 UTC – Missa Sábado YouTube");
-    resumeStream();
-});
-
-// Volta 20:30 BR = 23:30 UTC
-cron.schedule("30 23 * * 6", () => {
-    currentStream = STREAMS.imaculado;
-    log("23:30 UTC – Fim Missa Sábado");
-    resumeStream();
-});
 
 // ---------------------- STREAM ----------------------
 
