@@ -256,7 +256,7 @@
                     playButton.disabled = true;
                     pauseButton.disabled = false;
                     stopButton.disabled = false;
-                    radioStatus.textContent = 'Reproduzindo';
+                    // radioStatus.textContent será atualizado pelo evento 'play-stream' do socket
                 }).catch(error => {
                     console.error('❌ Erro ao iniciar stream principal:', error);
                     radioStatus.textContent = 'Erro ao tocar rádio';
@@ -311,7 +311,7 @@
             socket.on('connect', () => {
                 console.log('✅ Conectado ao servidor Socket.IO');
                 // Ao conectar, pede o status atual do stream para o servidor
-                socket.emit('get-current-stream');
+                // O servidor já envia o status inicial no 'connection'
             });
 
             socket.on('disconnect', () => {
@@ -329,10 +329,10 @@
                 }
 
                 radioStatus.textContent = `Reproduzindo: ${streamInfo.description}`;
-                // Se o stream principal já estiver tocando, apenas atualiza a descrição
-                if (isPlayingMainStream && audioPlayer.src.endsWith('/stream')) {
-                    console.log('Stream principal já ativo, apenas atualizando descrição.');
-                    // Não precisa chamar playMainStream novamente, apenas atualiza o status visual
+                // Se o stream principal já estiver tocando E a URL for a mesma, apenas atualiza a descrição
+                // Isso evita recarregar o stream desnecessariamente
+                if (isPlayingMainStream && audioPlayer.src.endsWith(streamInfo.url)) {
+                    console.log('Stream principal já ativo com a mesma URL, apenas atualizando descrição.');
                     playButton.disabled = true;
                     pauseButton.disabled = false;
                     stopButton.disabled = false;
@@ -374,6 +374,14 @@
                 playMainStream();
             });
 
+            // NOVO: Listener para forçar reconexão do player
+            socket.on('force-reconnect', () => {
+                console.log('🔄 Recebido comando force-reconnect. Recarregando stream principal...');
+                // Pausa e tenta iniciar o stream principal novamente para forçar a reconexão
+                stopMainStream(); // Limpa o player completamente
+                playMainStream(); // Inicia o novo stream
+            });
+
             // ===== Eventos do Player de Áudio Principal =====
             audioPlayer.addEventListener('error', (e) => {
                 console.error('❌ Erro no áudio principal:', audioPlayer.error);
@@ -396,7 +404,7 @@
                     playButton.disabled = true;
                     pauseButton.disabled = false;
                     stopButton.disabled = false;
-                    radioStatus.textContent = 'Reproduzindo';
+                    // radioStatus.textContent já é atualizado pelo 'play-stream' do socket
                 }
             });
 
@@ -461,8 +469,8 @@
 
             // Removido o autoplay direto. O usuário precisará clicar em "Tocar".
             // Apenas emite o evento para o servidor saber que um cliente conectou
-            socket.emit('get-current-stream');
-
+            // O servidor já envia o play-stream inicial na conexão, então não precisamos pedir aqui.
+            // socket.emit('get-current-stream'); // Removido, pois o servidor já envia na conexão
         })();
     </script>
 </body>
