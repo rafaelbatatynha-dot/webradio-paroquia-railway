@@ -262,6 +262,20 @@ cron.schedule("30 23 * * 6", () => {
 
 log("Agendamentos de programação carregados.");
 
+// ---------------------- CRON DE TESTE (A CADA MINUTO) ----------------------
+// Este cron será removido após a depuração.
+cron.schedule('* * * * *', () => {
+    const serverTime = new Date();
+    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
+    log(`CRON TESTE: Fuso horário do servidor: ${serverTime.toString().match(/|
+$
+([^)]+)
+$
+|/)[1] || 'Não detectado'}`);
+});
+log("CRON DE TESTE (a cada minuto) carregado.");
+
+
 // ---------------------- STREAM ----------------------
 
 app.get("/stream", async (req, res) => {
