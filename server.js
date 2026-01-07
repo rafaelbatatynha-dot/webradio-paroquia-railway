@@ -1,4 +1,4 @@
-// server.js – Web Rádio Paróquia (versão final, fuso automático, com atualização forçada do player)
+// server.js – Web Rádio Paróquia (SOLUÇÃO DIRETA: Código simplificado e robusto)
 
 const express = require('express');
 const http = require('http');
@@ -109,7 +109,7 @@ async function loadMessages(auth) {
 async function startDrive() {
     const auth = await authenticateDrive();
     await loadMessages(auth);
-    setInterval(() => loadMessages(auth), 1800000);
+    setInterval(() => loadMessages(auth), 1800000); // Recarrega mensagens a cada 30 minutos
 }
 
 // ---------------------- ÁUDIO / MENSAGENS ----------------------
@@ -122,6 +122,7 @@ function resumeStream() {
     });
     // Força uma reconexão do Socket.IO para garantir que o player atualize
     io.emit("force-reconnect");
+    log(`Stream atualizado para: ${currentStream.description}`);
 }
 
 async function playRandomMessage() {
@@ -134,6 +135,7 @@ async function playRandomMessage() {
 
     log("Mensagem aleatória: " + msg.name);
 
+    // Duração da mensagem (1 minuto)
     await new Promise(r => setTimeout(r, 60000));
 
     isPlayingMessage = false;
@@ -144,102 +146,108 @@ async function playSequentialMessages() {
     if (isPlayingMessage || messages.length === 0) return;
 
     blockRunning = true;
-    previousStream = currentStream;
+    previousStream = currentStream; // Salva o stream anterior
     isPlayingMessage = true;
 
-    log("Início do bloco 11h (UTC 14h)");
+    log("Início do bloco de mensagens sequenciais (11h BR / 14h UTC)");
 
     for (const msg of messages) {
         io.emit("play-mensagem", msg);
+        log(`Reproduzindo mensagem sequencial: ${msg.name}`);
+        // Duração da mensagem (1 minuto)
         await new Promise(r => setTimeout(r, 60000));
     }
 
-    log("Fim bloco 11h");
+    log("Fim do bloco de mensagens sequenciais");
 
     isPlayingMessage = false;
     blockRunning = false;
 
-    currentStream = previousStream;
+    currentStream = previousStream; // Retorna ao stream anterior
     resumeStream();
 }
 
-// ---------------------- AGENDAMENTOS (UTC) ----------------------
-// Servidor UTC = Brasil + 3h
+// ---------------------- AGENDAMENTOS (UTC - Brasil +3h) ----------------------
+// Os horários abaixo são em UTC. Para converter de BR para UTC, some 3 horas.
 
-// Clássica 00:10 BR = 03:10 UTC
+// Exemplo: 00:10 BR = 03:10 UTC
 cron.schedule("10 3 * * *", () => {
     currentStream = STREAMS.classica;
-    log("03:10 UTC – Música Clássica");
+    log("CRON: 03:10 UTC (00:10 BR) – Iniciando Música Clássica");
     resumeStream();
 });
 
-// Mensagens madrugada → 03h–07h UTC
+// Mensagens aleatórias na madrugada (03h-07h UTC = 00h-04h BR)
 cron.schedule("*/15 3-7 * * *", () => {
+    log("CRON: Disparando mensagem aleatória (00h-04h BR)");
     playRandomMessage();
 });
 
 // Volta Imaculado 05:00 BR = 08:00 UTC
 cron.schedule("0 8 * * *", () => {
     currentStream = STREAMS.imaculado;
-    log("08:00 UTC – Volta Imaculado");
+    log("CRON: 08:00 UTC (05:00 BR) – Voltando para Voz do Coração Imaculado");
     resumeStream();
 });
 
-// Bloco diário 11h BR = 14h UTC
+// Bloco diário de mensagens sequenciais 11h BR = 14h UTC
 cron.schedule("0 14 * * *", () => {
+    log("CRON: 14:00 UTC (11:00 BR) – Iniciando Bloco de Mensagens Sequenciais");
     playSequentialMessages();
 });
 
-// Fim bloco 12h BR = 15h UTC
+// Fim do bloco de mensagens 12h BR = 15h UTC
 cron.schedule("0 15 * * *", () => {
     currentStream = STREAMS.imaculado;
     isPlayingMessage = false;
     blockRunning = false;
-    log("15:00 UTC – Fim Bloco 11h");
+    log("CRON: 15:00 UTC (12:00 BR) – Fim do Bloco de Mensagens Sequenciais");
     resumeStream();
 });
 
 // Sábado Informativo 12:50 BR = 15:50 UTC
 cron.schedule("50 15 * * 6", () => {
     currentStream = STREAMS.maraba;
-    log("15:50 UTC – Informativo Paroquial");
+    log("CRON: 15:50 UTC (12:50 BR) – Iniciando Informativo Paroquial (Rádio Marabá)");
     resumeStream();
 });
 
-// Sábado volta 13:05 BR = 16:05 UTC
+// Sábado volta Imaculado 13:05 BR = 16:05 UTC
 cron.schedule("5 16 * * 6", () => {
     currentStream = STREAMS.imaculado;
-    log("16:05 UTC – Fim Informativo");
+    log("CRON: 16:05 UTC (13:05 BR) – Fim Informativo, voltando para Voz do Coração Imaculado");
     resumeStream();
 });
 
-// Domingo 08:30 BR = 11:30 UTC
+// Domingo Missa 08:30 BR = 11:30 UTC
 cron.schedule("30 11 * * 0", () => {
-    currentStream = STREAMS.maraba;
-    log("11:30 UTC – Missa Domingo Marabá");
+    currentStream = STREAMS.maraba; // Usando Marabá como exemplo para Missa Domingo
+    log("CRON: 11:30 UTC (08:30 BR) – Iniciando Missa Domingo (Rádio Marabá)");
     resumeStream();
 });
 
-// Domingo volta 09:30 BR = 12:30 UTC
+// Domingo volta Imaculado 09:30 BR = 12:30 UTC
 cron.schedule("30 12 * * 0", () => {
     currentStream = STREAMS.imaculado;
-    log("12:30 UTC – Fim Missa Domingo Marabá");
+    log("CRON: 12:30 UTC (09:30 BR) – Fim Missa Domingo, voltando para Voz do Coração Imaculado");
     resumeStream();
 });
 
-// Sábado Missa 19:00 BR = 22:00 UTC
+// Sábado Missa YouTube 19:00 BR = 22:00 UTC
 cron.schedule("0 22 * * 6", () => {
     currentStream = STREAMS.missaYoutube;
-    log("22:00 UTC – Missa Sábado YouTube");
+    log("CRON: 22:00 UTC (19:00 BR) – Iniciando Missa de Sábado (YouTube)");
     resumeStream();
 });
 
-// Volta 20:30 BR = 23:30 UTC
+// Sábado volta Imaculado 20:30 BR = 23:30 UTC
 cron.schedule("30 23 * * 6", () => {
     currentStream = STREAMS.imaculado;
-    log("23:30 UTC – Fim Missa Sábado");
+    log("CRON: 23:30 UTC (20:30 BR) – Fim Missa Sábado, voltando para Voz do Coração Imaculado");
     resumeStream();
 });
+
+log("Agendamentos de programação carregados.");
 
 // ---------------------- STREAM ----------------------
 
@@ -278,6 +286,7 @@ app.get("/stream", async (req, res) => {
                 return;
 
             } catch (err) {
+                log(`Erro ao processar YouTube stream: ${err.message}. Voltando para Imaculado.`);
                 currentStream = STREAMS.imaculado;
                 resumeStream();
                 return;
@@ -301,6 +310,7 @@ app.get("/stream", async (req, res) => {
         reqS.end();
 
     } catch (err) {
+        log(`Erro geral no /stream: ${err.message}.`);
         res.status(500).send("Erro stream");
     }
 });
@@ -311,7 +321,7 @@ app.get("/health", (req, res) => {
     res.json({
         status: "ok",
         currentStream: currentStream.description,
-        mensagens: messages.length,
+        mensagensCarregadas: messages.length,
         serverTimeUTC: new Date().toISOString()
     });
 });
@@ -326,7 +336,7 @@ io.on("connection", socket => {
 
     // Listener para forçar reconexão do player
     socket.on("force-reconnect", () => {
-        log("Recebido comando para forçar reconexão do player.");
+        log("Recebido comando para forçar reconexão do player via Socket.IO.");
         socket.emit("play-stream", {
             url: "/stream",
             description: currentStream.description
@@ -338,7 +348,7 @@ io.on("connection", socket => {
 
 async function start() {
     server.listen(PORT, "0.0.0.0", () => {
-        log("Servidor iniciado.");
+        log(`Servidor iniciado na porta ${PORT}.`);
     });
 
     setTimeout(async () => {
