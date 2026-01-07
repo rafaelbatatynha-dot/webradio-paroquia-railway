@@ -1,6 +1,4 @@
-// server.js - Web Rádio Paróquia (versão final, completa, pronta para uso)
-
-process.env.TZ = 'America/Sao_Paulo';
+// server.js – Web Rádio Paróquia (versão sem timezone, usando horário UTC do servidor)
 
 const express = require('express');
 const http = require('http');
@@ -15,55 +13,52 @@ const ytdl = require('ytdl-core');
 const app = express();
 const server = http.createServer(app);
 
-const io = socketIo(server, {
-    cors: { origin: '*' }
-});
+const io = socketIo(server, { cors: { origin: "*" } });
 
 app.use(cors());
-app.use(express.static('public'));
+app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// ----------------------------- CONFIGURAÇÕES -----------------------------
+// ---------------------- CONFIGURAÇÕES ----------------------
 
-const GOOGLE_DRIVE_FOLDER_ID = '1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2';
-const YOUTUBE_MISSA_VIDEO_ID = 'ZlXnuZcaJ2Y';
+const GOOGLE_DRIVE_FOLDER_ID = "1fxtCinZOfb74rWma-nSI_IUNgCSvrUS2";
+const YOUTUBE_MISSA_VIDEO_ID = "ZlXnuZcaJ2Y";
 
 const STREAMS = {
     maraba: {
-        url: 'https://streaming.speedrs.com.br/radio/8010/maraba',
-        description: 'Rádio Marabá'
+        url: "https://streaming.speedrs.com.br/radio/8010/maraba",
+        description: "Rádio Marabá"
     },
     imaculado: {
-        url: 'http://r13.ciclano.io:9033/live',
-        description: 'Voz do Coração Imaculado'
+        url: "http://r13.ciclano.io:9033/live",
+        description: "Voz do Coração Imaculado"
     },
     classica: {
-        url: 'https://stream.srg-ssr.ch/m/rsc_de/mp3_128',
-        description: 'Música Clássica'
+        url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128",
+        description: "Música Clássica"
     },
     missaYoutube: {
         url: `https://www.youtube.com/watch?v=${YOUTUBE_MISSA_VIDEO_ID}`,
-        description: 'Missa de Sábado – YouTube'
+        description: "Missa de Sábado – YouTube"
     }
 };
 
 let currentStream = STREAMS.imaculado;
 let messages = [];
 let isPlayingMessage = false;
+let previousStream = STREAMS.imaculado;
 let blockRunning = false;
-let previousStreamBeforeBlock = STREAMS.imaculado;
 
-// ----------------------------- LOG BRASIL -----------------------------
+// ---------------------- LOG ----------------------
 
 function log(msg) {
-    const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    console.log(`[${agora}] ${msg}`);
+    console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
-// ------------------------ GOOGLE DRIVE ------------------------
+// ---------------------- GOOGLE DRIVE ----------------------
 
-async function authenticateGoogleDrive() {
+async function authenticateDrive() {
     try {
         const json = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         if (!json) throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON ausente");
@@ -74,8 +69,9 @@ async function authenticateGoogleDrive() {
             scopes: ['https://www.googleapis.com/auth/drive.readonly']
         });
 
-        log("Google Drive autenticado");
+        log("Google Drive autenticado.");
         return auth;
+
     } catch (err) {
         log("Erro Drive: " + err.message);
         return null;
@@ -86,15 +82,16 @@ async function loadMessages(auth) {
     try {
         if (!auth) return;
 
-        const drive = google.drive({ version: 'v3', auth });
+        const drive = google.drive({ version: "v3", auth });
 
         const resp = await drive.files.list({
             q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio'`,
-            fields: 'files(id,name)',
+            fields: "files(id,name)",
             pageSize: 500
         });
 
         const files = resp.data.files || [];
+
         messages = files.map(f => ({
             id: f.id,
             name: f.name,
@@ -102,33 +99,38 @@ async function loadMessages(auth) {
         }));
 
         log(`Mensagens carregadas: ${messages.length}`);
+
     } catch (err) {
-        log("Erro ao carregar mensagens: " + err.message);
+        log("Erro carregando mensagens: " + err.message);
         messages = [];
     }
 }
 
-async function startDriveJobs() {
-    const auth = await authenticateGoogleDrive();
+async function startDrive() {
+    const auth = await authenticateDrive();
     await loadMessages(auth);
     setInterval(() => loadMessages(auth), 1800000);
 }
 
-// ------------------------- EXECUÇÃO DAS MENSAGENS -------------------------
+// ---------------------- ÁUDIO / MENSAGENS ----------------------
 
 function resumeStream() {
     io.emit("stop-mensagem");
-    io.emit("play-stream", { url: "/stream", description: currentStream.description });
+    io.emit("play-stream", {
+        url: "/stream",
+        description: currentStream.description
+    });
 }
 
 async function playRandomMessage() {
     if (isPlayingMessage || messages.length === 0) return;
 
     const msg = messages[Math.floor(Math.random() * messages.length)];
+
     isPlayingMessage = true;
+    io.emit("play-mensagem", msg);
 
     log("Mensagem aleatória: " + msg.name);
-    io.emit("play-mensagem", msg);
 
     await new Promise(r => setTimeout(r, 60000));
 
@@ -140,10 +142,10 @@ async function playSequentialMessages() {
     if (isPlayingMessage || messages.length === 0) return;
 
     blockRunning = true;
-    previousStreamBeforeBlock = currentStream;
+    previousStream = currentStream;
     isPlayingMessage = true;
 
-    log("Iniciando bloco de mensagens das 11h");
+    log("Início do bloco 11h (UTC 14h)");
 
     for (const msg of messages) {
         io.emit("play-mensagem", msg);
@@ -155,105 +157,105 @@ async function playSequentialMessages() {
     isPlayingMessage = false;
     blockRunning = false;
 
-    currentStream = previousStreamBeforeBlock;
+    currentStream = previousStream;
     resumeStream();
 }
 
-// --------------------- AGENDAMENTOS ---------------------
+// ---------------------- AGENDAMENTOS (UTC) ----------------------
+// Servidor UTC = Brasil + 3h
 
-function schedule() {
+// Clássica 00:10 BR = 03:10 UTC
+cron.schedule("10 3 * * *", () => {
+    currentStream = STREAMS.classica;
+    log("03:10 UTC – Música Clássica");
+    resumeStream();
+});
 
-    // MUSICA CLASSICA 00:10 → 05:00
-    cron.schedule('10 0 * * *', () => {
-        currentStream = STREAMS.classica;
-        log("00:10 – Música Clássica");
-        resumeStream();
-    });
+// Mensagens madrugada → 03h–07h UTC
+cron.schedule("*/15 3-7 * * *", () => {
+    playRandomMessage();
+});
 
-    // MENSAGENS A CADA 15 MIN DE MADRUGADA
-    cron.schedule('*/15 0-4 * * *', () => {
-        playRandomMessage();
-    });
+// Volta Imaculado 05:00 BR = 08:00 UTC
+cron.schedule("0 8 * * *", () => {
+    currentStream = STREAMS.imaculado;
+    log("08:00 UTC – Volta Imaculado");
+    resumeStream();
+});
 
-    // VOLTA IMACULADO 05:00
-    cron.schedule('0 5 * * *', () => {
-        currentStream = STREAMS.imaculado;
-        log("05:00 – Volta Imaculado");
-        resumeStream();
-    });
+// Bloco diário 11h BR = 14h UTC
+cron.schedule("0 14 * * *", () => {
+    playSequentialMessages();
+});
 
-    // BLOCO 11h → todas mensagens
-    cron.schedule('0 11 * * *', () => {
-        playSequentialMessages();
-    });
+// Fim bloco 12h BR = 15h UTC
+cron.schedule("0 15 * * *", () => {
+    currentStream = STREAMS.imaculado;
+    isPlayingMessage = false;
+    blockRunning = false;
+    log("15:00 UTC – Fim Bloco 11h");
+    resumeStream();
+});
 
-    // FIM BLOCO 12h
-    cron.schedule('0 12 * * *', () => {
-        isPlayingMessage = false;
-        currentStream = STREAMS.imaculado;
-        log("12:00 – Fim bloco 11h");
-        resumeStream();
-    });
+// Sábado Informativo 12:50 BR = 15:50 UTC
+cron.schedule("50 15 * * 6", () => {
+    currentStream = STREAMS.maraba;
+    log("15:50 UTC – Informativo Paroquial");
+    resumeStream();
+});
 
-    // MARABA SÁB 12:50 → 13:05
-    cron.schedule('50 12 * * 6', () => {
-        currentStream = STREAMS.maraba;
-        log("Sábado 12:50 – Informativo Paroquial");
-        resumeStream();
-    });
+// Sábado volta 13:05 BR = 16:05 UTC
+cron.schedule("5 16 * * 6", () => {
+    currentStream = STREAMS.imaculado;
+    log("16:05 UTC – Fim Informativo");
+    resumeStream();
+});
 
-    cron.schedule('5 13 * * 6', () => {
-        currentStream = STREAMS.imaculado;
-        log("Sábado 13:05 – Fim informativo");
-        resumeStream();
-    });
+// Domingo 08:30 BR = 11:30 UTC
+cron.schedule("30 11 * * 0", () => {
+    currentStream = STREAMS.maraba;
+    log("11:30 UTC – Missa Domingo Marabá");
+    resumeStream();
+});
 
-    // DOMINGO MARABA 08:30 → 09:30
-    cron.schedule('30 8 * * 0', () => {
-        currentStream = STREAMS.maraba;
-        log("Domingo 08:30 – Missa Marabá");
-        resumeStream();
-    });
+// Domingo volta 09:30 BR = 12:30 UTC
+cron.schedule("30 12 * * 0", () => {
+    currentStream = STREAMS.imaculado;
+    log("12:30 UTC – Fim Missa Domingo Marabá");
+    resumeStream();
+});
 
-    cron.schedule('30 9 * * 0', () => {
-        currentStream = STREAMS.imaculado;
-        log("Domingo 09:30 – Fim Missa Marabá");
-        resumeStream();
-    });
+// Sábado Missa 19:00 BR = 22:00 UTC
+cron.schedule("0 22 * * 6", () => {
+    currentStream = STREAMS.missaYoutube;
+    log("22:00 UTC – Missa Sábado YouTube");
+    resumeStream();
+});
 
-    // MISSA SÁBADO YOUTUBE 19h → 20:30
-    cron.schedule('0 19 * * 6', () => {
-        currentStream = STREAMS.missaYoutube;
-        log("Sábado 19:00 – Missa pelo YouTube");
-        resumeStream();
-    });
+// Volta 20:30 BR = 23:30 UTC
+cron.schedule("30 23 * * 6", () => {
+    currentStream = STREAMS.imaculado;
+    log("23:30 UTC – Fim Missa Sábado");
+    resumeStream();
+});
 
-    cron.schedule('30 20 * * 6', () => {
-        currentStream = STREAMS.imaculado;
-        log("Sábado 20:30 – Fim Missa YouTube");
-        resumeStream();
-    });
+// ---------------------- STREAM ----------------------
 
-    log("Agendamentos carregados.");
-}
-
-// ------------------------ STREAM ------------------------
-
-app.get('/stream', async (req, res) => {
+app.get("/stream", async (req, res) => {
     try {
         const url = currentStream.url;
 
         if (url.includes("youtube.com")) {
             try {
-                const audioStream = ytdl(url, {
+                const stream = ytdl(url, {
                     filter: "audioonly",
                     quality: "highestaudio",
                     highWaterMark: 1 << 25
                 });
 
-                exec("which ffmpeg", (err) => {
+                exec("which ffmpeg", err => {
                     if (err) {
-                        audioStream.pipe(res);
+                        stream.pipe(res);
                         return;
                     }
 
@@ -267,11 +269,12 @@ app.get('/stream', async (req, res) => {
                         "pipe:1"
                     ]);
 
-                    audioStream.pipe(ff.stdin);
+                    stream.pipe(ff.stdin);
                     ff.stdout.pipe(res);
                 });
 
                 return;
+
             } catch (err) {
                 currentStream = STREAMS.imaculado;
                 resumeStream();
@@ -282,53 +285,53 @@ app.get('/stream', async (req, res) => {
         const target = new URL(url);
         const client = target.protocol === "https:" ? https : http;
 
-        const reqStream = client.request({
+        const reqS = client.request({
             hostname: target.hostname,
             port: target.port || 80,
             path: target.pathname + target.search,
             method: "GET",
-            headers: { "User-Agent": "Mozilla", "Icy-MetaData": "0" }
+            headers: { "User-Agent": "Mozilla" }
         }, streamRes => {
-            res.writeHead(200, {
-                "Content-Type": "audio/mpeg",
-                "Access-Control-Allow-Origin": "*"
-            });
+            res.writeHead(200, { "Content-Type": "audio/mpeg" });
             streamRes.pipe(res);
         });
 
-        reqStream.end();
-    } catch {
-        res.status(500).send("Erro geral no stream");
+        reqS.end();
+
+    } catch (err) {
+        res.status(500).send("Erro stream");
     }
 });
 
-// ------------------------ HEALTH ------------------------
+// ---------------------- HEALTH ----------------------
 
-app.get('/health', (req, res) => {
+app.get("/health", (req, res) => {
     res.json({
         status: "ok",
         currentStream: currentStream.description,
-        messages: messages.length,
-        hora: new Date().toLocaleString("pt-BR")
+        mensagens: messages.length,
+        serverTimeUTC: new Date().toISOString()
     });
 });
 
-// ------------------------ SOCKET.IO ------------------------
+// ---------------------- SOCKET.IO ----------------------
 
 io.on("connection", socket => {
-    socket.emit("play-stream", { url: "/stream", description: currentStream.description });
+    socket.emit("play-stream", {
+        url: "/stream",
+        description: currentStream.description
+    });
 });
 
-// ------------------------ START ------------------------
+// ---------------------- START ----------------------
 
 async function start() {
     server.listen(PORT, "0.0.0.0", () => {
-        log("Servidor iniciado porta " + PORT);
+        log("Servidor iniciado.");
     });
 
     setTimeout(async () => {
-        await startDriveJobs();
-        schedule();
+        await startDrive();
     }, 1500);
 }
 
