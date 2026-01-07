@@ -1,9 +1,10 @@
-// server.js – TESTE CRÍTICO: Alternância de stream a cada 2 minutos
+// server.js – CORREÇÃO "Cannot GET /" e TESTE CRÍTICO: Alternância de stream a cada 2 minutos
 
 const express = require('express');
 const http = require('http');
 const https = require('https'); // Necessário para streams HTTPS
 const cron = require('node-cron');
+const path = require('path'); // Para servir arquivos estáticos
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +47,20 @@ cron.schedule('*/2 * * * *', () => {
 });
 
 log("Agendamento de troca de stream a cada 2 minutos carregado.");
+
+// ---------------------- ROTA / (RAIZ) - CORREÇÃO "Cannot GET /" ----------------------
+// Serve arquivos estáticos da pasta 'public'
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Se não houver index.html na pasta public, redireciona para /health
+app.get("/", (req, res) => {
+    // Se você tiver um index.html na pasta public, ele será servido automaticamente pela linha acima (app.use(express.static...)).
+    // Se não tiver, ou se quiser um comportamento diferente, você pode adicionar aqui.
+    // Por exemplo, para redirecionar para o /health para ver o status:
+    res.redirect('/health');
+    log("Requisição na rota raiz ('/') redirecionada para /health.");
+});
+
 
 // ---------------------- ROTA /stream ----------------------
 app.get("/stream", (req, res) => {
