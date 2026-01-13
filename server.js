@@ -32,7 +32,7 @@ const STREAMS = {
     description: "Voz do Coração Imaculado",
   },
   classica: {
-    url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128", // CORRIGIDO: URL da Música Clássica
+    url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128",
     description: "Música Clássica",
   },
   missaYoutube: {
@@ -80,23 +80,151 @@ async function loadMessages(auth) {
     const files = resp.data.files || [];
     messages = files.map((f) => ({
       id: f.id,
-      na..puração.
+      name: f.name,
+      url: `https://drive.google.com/uc?id=${f.id}&export=download`,
+    }));
+    log(`Mensagens carregadas: ${messages.length}`);
+  } catch (err) {
+    log("Erro carregando mensagens: " + err.message);
+    messages = [];
+  }
+}
+async function startDrive() {
+  log("Iniciando carregamento de mensagens do Google Drive...");
+  const auth = await authenticateDrive();
+  await loadMessages(auth);
+  setInterval(() => loadMessages(auth), 30 * 60 * 1000); // 30 min
+}
+// ---------------------- TROCA DE STREAM (ESSENCIAL) ----------------------
+function killActiveStreams() {
+  // Derruba conexões antigas do /stream para forçar o player reconectar
+  for (const res of activeStreamResponses) {
+    try {
+      res.destroy();
+    } catch (e) {}
+  }
+  activeStreamResponses.clear();
+}
+function resumeStream() {
+  // Troca REAL: mata streams ativos e manda o cliente reconectar
+  killActiveStreams();
+  io.emit("play-stream", {
+    url: "/stream",
+    description: currentStream.description,
+  });
+  log(`Retomando stream principal: ${currentStream.description}`);
+}
+function playMessage(messageUrl, messageName) {
+  previousStream = currentStream; // Salva o stream atual antes de tocar a mensagem
+  isPlayingMessage = true;
+  io.emit("play-message", { url: messageUrl, description: messageName });
+  log(`Reproduzindo mensagem: ${messageName}`);
+}
+function stopMessage() {
+  isPlayingMessage = false;
+  io.emit("stop-message");
+  log("Mensagem finalizada. Retornando ao stream anterior.");
+  currentStream = previousStream; // Volta para o stream que estava tocando antes da mensagem
+  resumeStream();
+}
+function changeStream(newStream) {
+  if (isPlayingMessage) {
+    log("Não é possível mudar o stream agora, uma mensagem está tocando.");
+    return;
+  }
+  previousStream = currentStream; // Salva o stream atual antes de mudar
+  currentStream = newStream;
+  resumeStream();
+  log(`Stream alterado para: ${currentStream.description}`);
+}
+// ---------------------- CRON JOBS ----------------------
+log(`Agendamentos carregados (timezone fixo BR: ${TZ}).`);
+
+// CRON TESTE: Dispara a cada minuto para verificar se o cron está ativo
 cron.schedule('* * * * *', () => {
     const serverTime = new Date();
-    const timezoneMatch = serverTime.toString().match(/|
+    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
+    const tzMatch = serverTime.toString().match(/|
 $
 ([^)]+)
 $
 |/);
-    const timezoneName = timezoneMatch ? timezoneMatch[1] : 'Não detectado';
-    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
-    log(`CRON TESTE: Fuso horário do servidor: ${timezoneName}`); // CORRIGIDO: Expressão regular
+    log(`CRON TESTE: Fuso horário do servidor: ${tzMatch ? tzMatch[1] : 'Não detectado'}`);
 }, {
     scheduled: true,
-    timezone: TZ // Usar o fuso horário fixo para o cron de teste também
+    timezone: TZ
 });
 log("CRON DE TESTE (a cada minuto) carregado.");
 
+// Música Clássica (00:10 BR / 03:10 UTC)
+cron.schedule('10 0 * * *', () => { // Minuto 10, Hora 0 (meia-noite)
+    log(`CRON: 00:10 BR – Iniciando Música Clássica`);
+    blockRunning = true;
+    changeStream(STREAMS.classica);
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Fim Música Clássica (01:10 BR / 04:10 UTC)
+cron.schedule('10 1 * * *', () => { // Minuto 10, Hora 1
+    log(`CRON: 01:10 BR – Finalizando Música Clássica`);
+    blockRunning = false;
+    currentStream = STREAMS.imaculado; // Garante que volte para a rádio principal
+    resumeStream();
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Missa de Sábado (19:00 BR / 22:00 UTC)
+cron.schedule('0 19 * * 6', () => { // Minuto 0, Hora 19, todo Sábado (6)
+    log(`CRON: 19:00 BR (Sábado) – Iniciando Missa de Sábado (YouTube)`);
+    blockRunning = true;
+    changeStream(STREAMS.missaYoutube);
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Fim Missa de Sábado (20:30 BR / 23:30 UTC)
+cron.schedule('30 20 * * 6', () => { // Minuto 30, Hora 20, todo Sábado (6)
+    log(`CRON: 20:30 BR (Sábado) – Finalizando Missa de Sábado`);
+    blockRunning = false;
+    currentStream = STREAMS.imaculado; // Garante que volte para a rádio principal
+    resumeStream();
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Mensagens Google Drive (09:00 BR / 12:00 UTC)
+cron.schedule('0 9 * * *', async () => { // Minuto 0, Hora 9, todos os dias
+    log(`CRON: 09:00 BR – Iniciando bloco de Mensagens do Google Drive`);
+    blockRunning = true;
+    if (messages.length > 0) {
+        // Toca uma mensagem aleatória
+        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+        playMessage(randomMessage.url, randomMessage.name);
+        // Define um timer para parar a mensagem após um tempo razoável (ex: 5 minutos)
+        // ou você pode adicionar lógica para tocar várias mensagens em sequência
+        setTimeout(() => {
+            if (isPlayingMessage) { // Verifica se a mensagem ainda está tocando
+                log("CRON: Tempo de mensagem esgotado. Finalizando.");
+                stopMessage();
+                blockRunning = false;
+            }
+        }, 5 * 60 * 1000); // 5 minutos
+    } else {
+        log("CRON: Nenhuma mensagem do Google Drive para tocar.");
+        blockRunning = false;
+        currentStream = STREAMS.imaculado;
+        resumeStream();
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
 
 // ---------------------- STREAM ----------------------
 
@@ -198,6 +326,10 @@ app.get("/stream", async (req, res) => {
         streamRes.on("error", (e) => {
           log("Erro streamRes (upstream): " + e.message);
           passthrough.destroy(e); // Destrói o passthrough em caso de erro
+        });
+        passthrough.on("error", (e) => { // Adicionado tratamento de erro para o passthrough
+            log("Erro passthrough: " + e.message);
+            try { res.end(); } catch (err) {}
         });
         streamRes.on("close", () => {
             log("Stream upstream fechado.");
