@@ -123,112 +123,100 @@ function playMessage(messageUrl, messageName) {
 function stopMessage() {
   isPlayingMessage = false;
   io.emit("stop-message");
-  log("Mensagem finalizada. Retornando ao stream anterior.");
+  log("Mensagem finalizada. Retomando stream anterior.");
   currentStream = previousStream; // Volta para o stream que estava tocando antes da mensagem
   resumeStream();
 }
-function changeStream(newStream) {
-  if (isPlayingMessage) {
-    log("Não é possível mudar o stream agora, uma mensagem está tocando.");
-    return;
-  }
-  previousStream = currentStream; // Salva o stream atual antes de mudar
-  currentStream = newStream;
-  resumeStream();
-  log(`Stream alterado para: ${currentStream.description}`);
-}
-// ---------------------- CRON JOBS ----------------------
-log(`Agendamentos carregados (timezone fixo BR: ${TZ}).`);
+// ---------------------- CRON JOBS (AGENDAMENTOS) ----------------------
+log(`Agendamentos carregados (timezone fixo BR).`);
 
-// CRON TESTE: Dispara a cada minuto para verificar se o cron está ativo
+// CRON TESTE: Dispara a cada minuto para verificar o fuso horário e a atividade do cron
 cron.schedule('* * * * *', () => {
     const serverTime = new Date();
-    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
-    const tzMatch = serverTime.toString().match(/|
-$
-([^)]+)
-$
-|/);
-    log(`CRON TESTE: Fuso horário do servidor: ${tzMatch ? tzMatch[1] : 'Não detectado'}`);
+    const serverTimeUTC = serverTime.toISOString();
+    const serverTimeBR = serverTime.toLocaleString('pt-BR', { timeZone: TZ });
+    log(`CRON TESTE: Disparado a cada minuto. Server UTC: ${serverTimeUTC}, Server BR (${TZ}): ${serverTimeBR}`);
 }, {
     scheduled: true,
-    timezone: TZ
-});
-log("CRON DE TESTE (a cada minuto) carregado.");
-
-// Música Clássica (00:10 BR / 03:10 UTC)
-cron.schedule('10 0 * * *', () => { // Minuto 10, Hora 0 (meia-noite)
-    log(`CRON: 00:10 BR – Iniciando Música Clássica`);
-    blockRunning = true;
-    changeStream(STREAMS.classica);
-}, {
-    scheduled: true,
-    timezone: TZ
+    timezone: TZ // Garante que o cron use o fuso horário BR para agendamento
 });
 
-// Fim Música Clássica (01:10 BR / 04:10 UTC)
-cron.schedule('10 1 * * *', () => { // Minuto 10, Hora 1
-    log(`CRON: 01:10 BR – Finalizando Música Clássica`);
-    blockRunning = false;
-    currentStream = STREAMS.imaculado; // Garante que volte para a rádio principal
-    resumeStream();
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-
-// Missa de Sábado (19:00 BR / 22:00 UTC)
-cron.schedule('0 19 * * 6', () => { // Minuto 0, Hora 19, todo Sábado (6)
-    log(`CRON: 19:00 BR (Sábado) – Iniciando Missa de Sábado (YouTube)`);
-    blockRunning = true;
-    changeStream(STREAMS.missaYoutube);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-
-// Fim Missa de Sábado (20:30 BR / 23:30 UTC)
-cron.schedule('30 20 * * 6', () => { // Minuto 30, Hora 20, todo Sábado (6)
-    log(`CRON: 20:30 BR (Sábado) – Finalizando Missa de Sábado`);
-    blockRunning = false;
-    currentStream = STREAMS.imaculado; // Garante que volte para a rádio principal
-    resumeStream();
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-
-// Mensagens Google Drive (09:00 BR / 12:00 UTC)
-cron.schedule('0 9 * * *', async () => { // Minuto 0, Hora 9, todos os dias
-    log(`CRON: 09:00 BR – Iniciando bloco de Mensagens do Google Drive`);
-    blockRunning = true;
-    if (messages.length > 0) {
-        // Toca uma mensagem aleatória
-        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-        playMessage(randomMessage.url, randomMessage.name);
-        // Define um timer para parar a mensagem após um tempo razoável (ex: 5 minutos)
-        // ou você pode adicionar lógica para tocar várias mensagens em sequência
-        setTimeout(() => {
-            if (isPlayingMessage) { // Verifica se a mensagem ainda está tocando
-                log("CRON: Tempo de mensagem esgotado. Finalizando.");
-                stopMessage();
-                blockRunning = false;
-            }
-        }, 5 * 60 * 1000); // 5 minutos
-    } else {
-        log("CRON: Nenhuma mensagem do Google Drive para tocar.");
-        blockRunning = false;
-        currentStream = STREAMS.imaculado;
+// Exemplo: Trocar para Rádio Marabá às 00:00 BR (03:00 UTC)
+cron.schedule('0 0 * * *', () => { // 00:00 BR
+    if (!isPlayingMessage && !blockRunning) {
+        currentStream = STREAMS.maraba;
         resumeStream();
+        log(`CRON: 00:00 BR – Trocando para ${currentStream.description}`);
     }
 }, {
     scheduled: true,
     timezone: TZ
 });
 
-// ---------------------- STREAM ----------------------
+// Exemplo: Trocar para Voz do Coração Imaculado às 06:00 BR (09:00 UTC)
+cron.schedule('0 6 * * *', () => { // 06:00 BR
+    if (!isPlayingMessage && !blockRunning) {
+        currentStream = STREAMS.imaculado;
+        resumeStream();
+        log(`CRON: 06:00 BR – Trocando para ${currentStream.description}`);
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
 
-app.get("/stream", async (req, res) => {
+// Exemplo: Tocar uma mensagem aleatória às 10:00 BR (13:00 UTC)
+cron.schedule('0 10 * * *', () => { // 10:00 BR
+    if (messages.length > 0 && !isPlayingMessage && !blockRunning) {
+        const randomIndex = Math.floor(Math.random() * messages.length);
+        const message = messages[randomIndex];
+        playMessage(message.url, message.name);
+        // A função playMessage já lida com o retorno ao stream anterior via evento 'ended' no cliente
+        log(`CRON: 10:00 BR – Tocando mensagem: ${message.name}`);
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Exemplo: Trocar para Música Clássica às 14:00 BR (17:00 UTC)
+cron.schedule('0 14 * * *', () => { // 14:00 BR
+    if (!isPlayingMessage && !blockRunning) {
+        currentStream = STREAMS.classica;
+        resumeStream();
+        log(`CRON: 14:00 BR – Trocando para ${currentStream.description}`);
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Exemplo: Missa de Sábado (YouTube) às 19:00 BR (22:00 UTC) - Sábados
+cron.schedule('0 19 * * 6', () => { // 19:00 BR, apenas aos sábados (6)
+    if (!isPlayingMessage && !blockRunning) {
+        currentStream = STREAMS.missaYoutube;
+        resumeStream();
+        log(`CRON: 19:00 BR (Sábado) – Trocando para ${currentStream.description}`);
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// Exemplo: Retornar para Voz do Coração Imaculado após a Missa de Sábado às 21:00 BR (00:00 UTC do domingo) - Sábados
+cron.schedule('0 21 * * 6', () => { // 21:00 BR, apenas aos sábados (6)
+    if (!isPlayingMessage && !blockRunning) { // Verifica se não está tocando mensagem
+        currentStream = STREAMS.imaculado;
+        resumeStream();
+        log(`CRON: 21:00 BR (Sábado) – Retornando para ${currentStream.description}`);
+    }
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+
+// ---------------------- ENDPOINT DE STREAM ----------------------
+app.get("/stream", (req, res) => {
   // Adiciona a resposta atual ao conjunto de respostas ativas
   activeStreamResponses.add(res);
 
