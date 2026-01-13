@@ -1,3 +1,4 @@
+cat > public/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -20,9 +21,7 @@
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0,0,0,.1);
     }
-    h1 {
-      margin-top: 0;
-    }
+    h1 { margin-top: 0; }
     .now {
       display: inline-block;
       padding: 6px 12px;
@@ -30,10 +29,7 @@
       border-radius: 12px;
       font-size: 14px;
     }
-    audio {
-      width: 100%;
-      margin-top: 10px;
-    }
+    audio { width: 100%; margin-top: 10px; }
     button {
       margin-right: 10px;
       margin-top: 10px;
@@ -41,11 +37,7 @@
       font-size: 14px;
       cursor: pointer;
     }
-    .msg-title {
-      font-size: 14px;
-      color: #555;
-      margin-top: 10px;
-    }
+    .msg-title { font-size: 14px; color: #555; margin-top: 10px; }
   </style>
 </head>
 
@@ -58,7 +50,6 @@
       <span class="now" id="now">Conectando…</span>
     </p>
 
-    <!-- STREAM PRINCIPAL -->
     <audio id="radio" controls autoplay></audio>
 
     <div>
@@ -68,7 +59,6 @@
 
     <hr />
 
-    <!-- MENSAGENS -->
     <h3>Mensagens</h3>
     <audio id="mensagem" controls></audio>
     <div class="msg-title" id="mensagemNome"></div>
@@ -83,47 +73,37 @@
     const now = document.getElementById("now");
     const mensagemNome = document.getElementById("mensagemNome");
 
-    // -------- FUNÇÃO CRÍTICA: LIMPA BUFFER COMPLETO --------
-    function resetAudio(audioEl) {
+    // Limpa buffer completo (evita "voz robótica"/artefatos)
+    function resetAudio(a) {
       try {
-        audioEl.pause();
-        audioEl.removeAttribute("src");
-        audioEl.load();
+        a.pause();
+        a.removeAttribute("src");
+        a.load();
       } catch (e) {}
     }
 
-    // -------- STREAM PRINCIPAL --------
     socket.on("play-stream", ({ url, description }) => {
-      console.log("Trocando stream para:", description);
-
       now.textContent = description || "Sem descrição";
 
-      // Limpa tudo para evitar artefato / som robótico
+      // limpa antes de trocar
       resetAudio(radio);
 
+      // força nova conexão
       const finalUrl = url + "?t=" + Date.now();
 
       radio.src = finalUrl;
       radio.load();
-
-      radio.play().catch(() => {
-        console.warn("Autoplay bloqueado, aguardando ação do usuário.");
-      });
+      radio.play().catch(() => {});
     });
 
-    // -------- MENSAGEM --------
     socket.on("play-mensagem", (msg) => {
       if (!msg || !msg.url) return;
-
-      console.log("Tocando mensagem:", msg.name);
 
       resetAudio(mensagem);
 
       mensagemNome.textContent = msg.name || "Mensagem";
-
       mensagem.src = msg.url + "&t=" + Date.now();
       mensagem.load();
-
       mensagem.play().catch(() => {});
     });
 
@@ -132,23 +112,12 @@
       mensagemNome.textContent = "";
     });
 
-    // -------- CONTROLES --------
-    document.getElementById("btnPlay").onclick = () => {
-      radio.play().catch(() => {});
-    };
+    document.getElementById("btnPlay").onclick = () => radio.play().catch(() => {});
+    document.getElementById("btnStop").onclick = () => radio.pause();
 
-    document.getElementById("btnStop").onclick = () => {
-      radio.pause();
-    };
-
-    // -------- LOG BÁSICO --------
-    socket.on("connect", () => {
-      console.log("Conectado ao servidor Socket.IO");
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Desconectado do servidor");
-    });
+    socket.on("connect", () => console.log("Socket.IO conectado"));
+    socket.on("disconnect", () => console.log("Socket.IO desconectado"));
   </script>
 </body>
 </html>
+EOF
