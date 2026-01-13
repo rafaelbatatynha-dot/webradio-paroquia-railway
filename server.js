@@ -45,6 +45,7 @@ let previousStream = STREAMS.imaculado;
 let messages = [];
 let isPlayingMessage = false;
 let blockRunning = false;
+let manualOverrideActive = false; // NOVO: Flag para modo manual
 // Conexões ativas do endpoint /stream (PONTO-CHAVE para trocar programação)
 const activeStreamResponses = new Set();
 // ---------------------- LOG ----------------------
@@ -111,8 +112,9 @@ function resumeStream() {
   io.emit("play-stream", {
     url: "/stream",
     description: currentStream.description,
+    manualOverride: manualOverrideActive // Envia o estado do override
   });
-  log(`Retomando stream principal: ${currentStream.description}`);
+  log(`Retomando stream principal: ${currentStream.description}. Manual Override: ${manualOverrideActive}`);
 }
 function playMessage(messageUrl, messageName) {
   previousStream = currentStream; // Salva o stream atual antes de tocar a mensagem
@@ -124,103 +126,128 @@ function stopMessage() {
   isPlayingMessage = false;
   io.emit("stop-message");
   log("Mensagem finalizada. Retomando stream anterior.");
-  currentStream = previousStream; // Volta para o stream que estava tocando antes da mensagem
+}
+function changeStream(newStream) {
+  if (currentStream.url === newStream.url) {
+    log(`Stream já é ${newStream.description}. Nenhuma mudança necessária.`);
+    return;
+  }
+  currentStream = newStream;
   resumeStream();
 }
-// ---------------------- CRON JOBS (AGENDAMENTOS) ----------------------
-log(`Agendamentos carregados (timezone fixo BR).`);
+// ---------------------- CRON JOBS ----------------------
+log("Agendamentos carregados (timezone fixo BR).");
 
-// CRON TESTE: Dispara a cada minuto para verificar o fuso horário e a atividade do cron
+// CRON TESTE: Dispara a cada minuto para verificar o fuso horário e o funcionamento do cron
 cron.schedule('* * * * *', () => {
-    const serverTime = new Date();
-    const serverTimeUTC = serverTime.toISOString();
-    const serverTimeBR = serverTime.toLocaleString('pt-BR', { timeZone: TZ });
-    log(`CRON TESTE: Disparado a cada minuto. Server UTC: ${serverTimeUTC}, Server BR (${TZ}): ${serverTimeBR}`);
+  const serverTime = new Date();
+  const serverTimeBR = new Date().toLocaleString('pt-BR', { timeZone: TZ });
+  log(`CRON TESTE: Disparado a cada minuto. UTC: ${serverTime.toISOString()} | BR (${TZ}): ${serverTimeBR}. Manual Override: ${manualOverrideActive}`);
 }, {
-    scheduled: true,
-    timezone: TZ // Garante que o cron use o fuso horário BR para agendamento
+  scheduled: true,
+  timezone: TZ // Garante que o cron use o fuso horário correto para agendamento
 });
 
-// Exemplo: Trocar para Rádio Marabá às 00:00 BR (03:00 UTC)
-cron.schedule('0 0 * * *', () => { // 00:00 BR
-    if (!isPlayingMessage && !blockRunning) {
-        currentStream = STREAMS.maraba;
-        resumeStream();
-        log(`CRON: 00:00 BR – Trocando para ${currentStream.description}`);
-    }
+// Exemplo de agendamento: Rádio Marabá às 00:10 BR (03:10 UTC)
+cron.schedule('10 0 * * *', () => { // 00:10 BR
+  if (manualOverrideActive) {
+    log(`CRON: 00:10 BR – Rádio Marabá ignorado devido a Manual Override ativo.`);
+    return;
+  }
+  log(`CRON: 00:10 BR – Iniciando Rádio Marabá.`);
+  changeStream(STREAMS.maraba);
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// Exemplo: Trocar para Voz do Coração Imaculado às 06:00 BR (09:00 UTC)
-cron.schedule('0 6 * * *', () => { // 06:00 BR
-    if (!isPlayingMessage && !blockRunning) {
-        currentStream = STREAMS.imaculado;
-        resumeStream();
-        log(`CRON: 06:00 BR – Trocando para ${currentStream.description}`);
-    }
+// Exemplo de agendamento: Música Clássica às 00:20 BR (03:20 UTC)
+cron.schedule('20 0 * * *', () => { // 00:20 BR
+  if (manualOverrideActive) {
+    log(`CRON: 00:20 BR – Música Clássica ignorado devido a Manual Override ativo.`);
+    return;
+  }
+  log(`CRON: 00:20 BR – Iniciando Música Clássica.`);
+  changeStream(STREAMS.classica);
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// Exemplo: Tocar uma mensagem aleatória às 10:00 BR (13:00 UTC)
-cron.schedule('0 10 * * *', () => { // 10:00 BR
-    if (messages.length > 0 && !isPlayingMessage && !blockRunning) {
-        const randomIndex = Math.floor(Math.random() * messages.length);
-        const message = messages[randomIndex];
-        playMessage(message.url, message.name);
-        // A função playMessage já lida com o retorno ao stream anterior via evento 'ended' no cliente
-        log(`CRON: 10:00 BR – Tocando mensagem: ${message.name}`);
-    }
+// Exemplo de agendamento: Missa de Sábado (YouTube) às 19:00 BR (22:00 UTC)
+cron.schedule('0 19 * * 6', () => { // Sábado às 19:00 BR
+  if (manualOverrideActive) {
+    log(`CRON: Sábado 19:00 BR – Missa de Sábado ignorado devido a Manual Override ativo.`);
+    return;
+  }
+  log(`CRON: Sábado 19:00 BR – Iniciando Missa de Sábado (YouTube).`);
+  changeStream(STREAMS.missaYoutube);
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// Exemplo: Trocar para Música Clássica às 14:00 BR (17:00 UTC)
-cron.schedule('0 14 * * *', () => { // 14:00 BR
-    if (!isPlayingMessage && !blockRunning) {
-        currentStream = STREAMS.classica;
-        resumeStream();
-        log(`CRON: 14:00 BR – Trocando para ${currentStream.description}`);
-    }
+// Exemplo de agendamento: Retorno para Voz do Coração Imaculado às 00:30 BR (03:30 UTC)
+cron.schedule('30 0 * * *', () => { // 00:30 BR
+  if (manualOverrideActive) {
+    log(`CRON: 00:30 BR – Retorno para Voz do Coração Imaculado ignorado devido a Manual Override ativo.`);
+    return;
+  }
+  log(`CRON: 00:30 BR – Retornando para Voz do Coração Imaculado.`);
+  changeStream(STREAMS.imaculado);
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// Exemplo: Missa de Sábado (YouTube) às 19:00 BR (22:00 UTC) - Sábados
-cron.schedule('0 19 * * 6', () => { // 19:00 BR, apenas aos sábados (6)
-    if (!isPlayingMessage && !blockRunning) {
-        currentStream = STREAMS.missaYoutube;
-        resumeStream();
-        log(`CRON: 19:00 BR (Sábado) – Trocando para ${currentStream.description}`);
-    }
+// Exemplo de agendamento: Retorno para Voz do Coração Imaculado após a Missa de Sábado às 20:30 BR (23:30 UTC)
+cron.schedule('30 20 * * 6', () => { // Sábado às 20:30 BR
+  if (manualOverrideActive) {
+    log(`CRON: Sábado 20:30 BR – Retorno para Voz do Coração Imaculado ignorado devido a Manual Override ativo.`);
+    return;
+  }
+  log(`CRON: Sábado 20:30 BR – Retornando para Voz do Coração Imaculado após Missa.`);
+  changeStream(STREAMS.imaculado);
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// Exemplo: Retornar para Voz do Coração Imaculado após a Missa de Sábado às 21:00 BR (00:00 UTC do domingo) - Sábados
-cron.schedule('0 21 * * 6', () => { // 21:00 BR, apenas aos sábados (6)
-    if (!isPlayingMessage && !blockRunning) { // Verifica se não está tocando mensagem
-        currentStream = STREAMS.imaculado;
-        resumeStream();
-        log(`CRON: 21:00 BR (Sábado) – Retornando para ${currentStream.description}`);
-    }
+// Agendamento de mensagem (exemplo: a cada 5 minutos, se houver mensagens e não estiver tocando outra)
+cron.schedule('*/5 * * * *', async () => {
+  if (manualOverrideActive) {
+    log(`CRON: Mensagem ignorada devido a Manual Override ativo.`);
+    return;
+  }
+  if (messages.length > 0 && !isPlayingMessage && !blockRunning) {
+    blockRunning = true; // Bloqueia para evitar múltiplas execuções
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    playMessage(randomMessage.url, randomMessage.name);
+
+    // Determinar a duração da mensagem (pode ser necessário buscar metadados ou estimar)
+    // Por simplicidade, vamos usar um tempo fixo para este exemplo
+    const messageDurationMs = 30 * 1000; // Exemplo: 30 segundos
+
+    await new Promise(resolve => setTimeout(resolve, messageDurationMs));
+    stopMessage();
+    // Após a mensagem, o servidor deve emitir um 'play-stream' para retomar o stream principal
+    // Isso já é tratado por `stopMessage` que não chama `resumeStream` diretamente,
+    // mas o cliente espera um `play-stream` do servidor.
+    // Para garantir que o cliente retome o stream principal, podemos forçar um `resumeStream` aqui.
+    resumeStream(); // Garante que o cliente volte para o stream principal
+    blockRunning = false;
+  }
 }, {
-    scheduled: true,
-    timezone: TZ
+  scheduled: true,
+  timezone: TZ
 });
 
-// ---------------------- ENDPOINT DE STREAM ----------------------
+
+// ---------------------- ENDPOINTS ----------------------
 app.get("/stream", (req, res) => {
-  // Adiciona a resposta atual ao conjunto de respostas ativas
+  // Adiciona a resposta ao conjunto de conexões ativas
   activeStreamResponses.add(res);
-
-  // Remove a resposta do conjunto quando a conexão é fechada
+  // Remove do conjunto quando a conexão é fechada
   req.on("close", () => {
     activeStreamResponses.delete(res);
     // log("Conexão de stream fechada."); // Opcional: logar fechamento
@@ -349,6 +376,7 @@ app.get("/health", (req, res) => {
     activeStreamConnections: activeStreamResponses.size,
     isPlayingMessage,
     blockRunning,
+    manualOverrideActive: manualOverrideActive // NOVO: Estado do override manual
   });
 });
 // ---------------------- SOCKET.IO ----------------------
@@ -357,7 +385,40 @@ io.on("connection", (socket) => {
   socket.emit("play-stream", {
     url: "/stream",
     description: currentStream.description,
+    manualOverride: manualOverrideActive // Envia o estado do override
   });
+
+  // Listener para forçar reconexão do player
+  socket.on("force-reconnect", () => {
+    log("Recebido comando para forçar reconexão do player via Socket.IO.");
+    // Não altera o manualOverrideActive aqui, apenas força o re-emit
+    io.emit("play-stream", {
+        url: "/stream",
+        description: currentStream.description,
+        manualOverride: manualOverrideActive
+    });
+  });
+
+  // Listener para trocar o stream via Socket.IO (para os botões de teste)
+  socket.on('change-stream', (streamKey) => {
+      const newStream = STREAMS[streamKey];
+      if (newStream) {
+          log(`Recebido comando para mudar stream para: ${newStream.description} via Socket.IO.`);
+          manualOverrideActive = true; // Ativa o modo manual
+          changeStream(newStream); // Usa a função existente para mudar o stream
+      } else {
+          log(`Erro: Stream key '${streamKey}' inválida recebida via Socket.IO.`);
+      }
+  });
+
+  // NOVO: Listener para resetar para programação automática
+  socket.on('reset-to-auto', () => {
+      log(`Recebido comando para resetar para programação automática.`);
+      manualOverrideActive = false; // Desativa o modo manual
+      currentStream = STREAMS.imaculado; // Volta para o stream principal padrão
+      resumeStream(); // Retoma o stream principal e notifica clientes
+  });
+
   // (Opcional) ping
   socket.on("ping", () => socket.emit("pong"));
 });

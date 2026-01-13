@@ -1,123 +1,328 @@
-cat > public/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Web Rádio Paróquia</title>
-
-  <style>
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      background: #f4f4f4;
-      color: #222;
-      padding: 20px;
-    }
-    .container {
-      max-width: 720px;
-      margin: auto;
-      background: #fff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,.1);
-    }
-    h1 { margin-top: 0; }
-    .now {
-      display: inline-block;
-      padding: 6px 12px;
-      background: #eee;
-      border-radius: 12px;
-      font-size: 14px;
-    }
-    audio { width: 100%; margin-top: 10px; }
-    button {
-      margin-right: 10px;
-      margin-top: 10px;
-      padding: 8px 14px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .msg-title { font-size: 14px; color: #555; margin-top: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Rádio Paróquia</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #4a4a4a;
+            margin-bottom: 25px;
+            font-size: 2.2em;
+            font-weight: 600;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            font-weight: 500;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        #current-stream-info {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 20px;
+            min-height: 1.5em; /* Garante espaço mesmo sem texto */
+        }
+        #manual-override-status {
+            font-size: 1em;
+            font-weight: bold;
+            color: #dc3545; /* Vermelho para indicar modo manual */
+            margin-bottom: 15px;
+            display: none; /* Escondido por padrão */
+        }
+        #manual-override-status.active {
+            display: block;
+        }
+        audio {
+            width: 100%;
+            margin-top: 20px;
+            border-radius: 8px;
+            outline: none;
+        }
+        .button-group {
+            margin-top: 25px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            min-width: 150px;
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);
+        }
+        button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .test-streams-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px dashed #ddd;
+        }
+        .test-streams-section .button-group {
+            margin-top: 20px;
+        }
+        .test-streams-section button {
+            background-color: #28a745; /* Verde para streams de teste */
+            box-shadow: 0 4px 10px rgba(40, 167, 69, 0.2);
+        }
+        .test-streams-section button:hover {
+            background-color: #218838;
+        }
+        #reset-auto-button {
+            background-color: #ffc107; /* Amarelo para reset */
+            color: #333;
+            box-shadow: 0 4px 10px rgba(255, 193, 7, 0.2);
+        }
+        #reset-auto-button:hover {
+            background-color: #e0a800;
+        }
+        .message-status {
+            margin-top: 15px;
+            font-size: 1em;
+            color: #666;
+        }
+        .message-status.playing {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .loading-indicator {
+            display: none; /* Escondido por padrão */
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #888;
+        }
+        .loading-indicator.active {
+            display: block;
+        }
+    </style>
 </head>
-
 <body>
-  <div class="container">
-    <h1>Web Rádio Paróquia</h1>
+    <div class="container">
+        <h1>Web Rádio Paróquia</h1>
 
-    <p>
-      <strong>Agora tocando:</strong>
-      <span class="now" id="now">Conectando…</span>
-    </p>
+        <div id="current-stream-info">Carregando...</div>
+        <div id="manual-override-status">MODO MANUAL ATIVO - Agendamentos suspensos!</div>
+        <audio id="main-audio-player" controls autoplay></audio>
 
-    <audio id="radio" controls autoplay></audio>
+        <div class="button-group">
+            <button id="play-main-button">Tocar Rádio Principal</button>
+            <button id="pause-main-button">Pausar</button>
+            <button id="stop-main-button">Parar</button>
+            <button id="force-reconnect-button">Forçar Reconexão</button>
+        </div>
 
-    <div>
-      <button id="btnPlay">▶️ Play</button>
-      <button id="btnStop">⏸ Pausar</button>
+        <div class="message-status" id="message-status"></div>
+        <div class="loading-indicator" id="loading-indicator">Carregando stream...</div>
+
+        <div class="test-streams-section">
+            <h2>Controle de Programação</h2>
+            <p>Ative um stream manualmente ou retorne à programação automática.</p>
+            <div class="button-group">
+                <button id="test-maraba-button">Rádio Marabá</button>
+                <button id="test-classica-button">Música Clássica</button>
+                <button id="test-missa-youtube-button">Missa Sábado (YouTube)</button>
+                <!-- Adicione mais botões de teste aqui se tiver outros streams no STREAMS do server.js -->
+                <button id="reset-auto-button">Voltar para Programação Automática</button>
+            </div>
+        </div>
     </div>
 
-    <hr />
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const audioPlayer = document.getElementById('main-audio-player');
+        const currentStreamInfo = document.getElementById('current-stream-info');
+        const manualOverrideStatus = document.getElementById('manual-override-status');
+        const messageStatus = document.getElementById('message-status');
+        const loadingIndicator = document.getElementById('loading-indicator');
 
-    <h3>Mensagens</h3>
-    <audio id="mensagem" controls></audio>
-    <div class="msg-title" id="mensagemNome"></div>
-  </div>
+        const playMainButton = document.getElementById('play-main-button');
+        const pauseMainButton = document.getElementById('pause-main-button');
+        const stopMainButton = document.getElementById('stop-main-button');
+        const forceReconnectButton = document.getElementById('force-reconnect-button');
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
+        const testMarabaButton = document.getElementById('test-maraba-button');
+        const testClassicaButton = document.getElementById('test-classica-button');
+        const testMissaYoutubeButton = document.getElementById('test-missa-youtube-button');
+        const resetAutoButton = document.getElementById('reset-auto-button');
 
-    const radio = document.getElementById("radio");
-    const mensagem = document.getElementById("mensagem");
-    const now = document.getElementById("now");
-    const mensagemNome = document.getElementById("mensagemNome");
+        let currentStreamDescription = "Voz do Coração Imaculado"; // Valor inicial
 
-    // Limpa buffer completo (evita "voz robótica"/artefatos)
-    function resetAudio(a) {
-      try {
-        a.pause();
-        a.removeAttribute("src");
-        a.load();
-      } catch (e) {}
-    }
+        function updateButtonStates(isPlaying) {
+            playMainButton.disabled = isPlaying;
+            pauseMainButton.disabled = !isPlaying;
+            stopMainButton.disabled = !isPlaying;
+            // Os botões de teste e reset podem estar sempre ativos para permitir o controle
+        }
 
-    socket.on("play-stream", ({ url, description }) => {
-      now.textContent = description || "Sem descrição";
+        function startStream(url, description) {
+            currentStreamDescription = description;
+            currentStreamInfo.textContent = `Reproduzindo: ${description}`;
+            loadingIndicator.classList.add('active');
+            audioPlayer.src = url;
+            audioPlayer.load(); // Recarrega a fonte
+            audioPlayer.play().then(() => {
+                loadingIndicator.classList.remove('active');
+                updateButtonStates(true);
+            }).catch(error => {
+                console.error("Erro ao tentar tocar o stream:", error);
+                currentStreamInfo.textContent = `Erro ao reproduzir: ${description}. Tente novamente.`;
+                loadingIndicator.classList.remove('active');
+                updateButtonStates(false);
+            });
+        }
 
-      // limpa antes de trocar
-      resetAudio(radio);
+        // Event Listeners para o player de áudio
+        audioPlayer.addEventListener('playing', () => updateButtonStates(true));
+        audioPlayer.addEventListener('pause', () => updateButtonStates(false));
+        audioPlayer.addEventListener('ended', () => updateButtonStates(false));
+        audioPlayer.addEventListener('error', (e) => {
+            console.error("Erro no player de áudio:", e);
+            currentStreamInfo.textContent = `Erro de reprodução. Tente novamente.`;
+            loadingIndicator.classList.remove('active');
+            updateButtonStates(false);
+        });
 
-      // força nova conexão
-      const finalUrl = url + "?t=" + Date.now();
+        // Event Listeners para os botões principais
+        playMainButton.addEventListener('click', () => {
+            // Ao clicar em tocar, sempre tenta o stream principal (/stream)
+            startStream('/stream', currentStreamDescription);
+        });
+        pauseMainButton.addEventListener('click', () => {
+            audioPlayer.pause();
+            updateButtonStates(false);
+        });
+        stopMainButton.addEventListener('click', () => {
+            audioPlayer.pause();
+            audioPlayer.src = ''; // Limpa a fonte
+            currentStreamInfo.textContent = "Rádio Parada.";
+            updateButtonStates(false);
+        });
+        forceReconnectButton.addEventListener('click', () => {
+            console.log("Forçando reconexão via Socket.IO...");
+            socket.emit('force-reconnect'); // Envia comando para o servidor
+            // O servidor responderá com 'play-stream' que irá reiniciar o player
+            currentStreamInfo.textContent = `Forçando reconexão...`;
+            loadingIndicator.classList.add('active');
+            updateButtonStates(false);
+        });
 
-      radio.src = finalUrl;
-      radio.load();
-      radio.play().catch(() => {});
-    });
+        // Event Listeners para os botões de teste
+        testMarabaButton.addEventListener('click', () => {
+            socket.emit('change-stream', 'maraba');
+        });
+        testClassicaButton.addEventListener('click', () => {
+            socket.emit('change-stream', 'classica');
+        });
+        testMissaYoutubeButton.addEventListener('click', () => {
+            socket.emit('change-stream', 'missaYoutube');
+        });
+        // NOVO: Botão para resetar para programação automática
+        resetAutoButton.addEventListener('click', () => {
+            socket.emit('reset-to-auto');
+        });
+        // Adicione mais listeners para outros streams de teste aqui
 
-    socket.on("play-mensagem", (msg) => {
-      if (!msg || !msg.url) return;
+        // Socket.IO Listeners
+        socket.on('connect', () => {
+            console.log('Conectado ao servidor Socket.IO');
+            // Ao reconectar, o servidor já envia o stream atual
+        });
 
-      resetAudio(mensagem);
+        socket.on('play-stream', (data) => {
+            console.log('Recebido comando play-stream:', data);
+            startStream(data.url, data.description);
+            if (data.manualOverride) {
+                manualOverrideStatus.classList.add('active');
+            } else {
+                manualOverrideStatus.classList.remove('active');
+            }
+        });
 
-      mensagemNome.textContent = msg.name || "Mensagem";
-      mensagem.src = msg.url + "&t=" + Date.now();
-      mensagem.load();
-      mensagem.play().catch(() => {});
-    });
+        socket.on('play-message', (data) => {
+            console.log('Recebido comando play-message:', data);
+            messageStatus.textContent = `Tocando mensagem: ${data.description}`;
+            messageStatus.classList.add('playing');
+            // Pausa o stream principal e toca a mensagem
+            audioPlayer.pause();
+            audioPlayer.src = data.url;
+            audioPlayer.load();
+            audioPlayer.play().then(() => {
+                currentStreamInfo.textContent = `Reproduzindo: ${data.description}`;
+                loadingIndicator.classList.remove('active');
+                updateButtonStates(true);
+            }).catch(error => {
+                console.error("Erro ao tocar mensagem:", error);
+                currentStreamInfo.textContent = `Erro ao tocar mensagem: ${data.description}`;
+                loadingIndicator.classList.remove('active');
+                updateButtonStates(false);
+            });
+        });
 
-    socket.on("stop-mensagem", () => {
-      resetAudio(mensagem);
-      mensagemNome.textContent = "";
-    });
+        socket.on('stop-message', () => {
+            console.log('Recebido comando stop-message');
+            messageStatus.textContent = '';
+            messageStatus.classList.remove('playing');
+            // O servidor já deve ter trocado o currentStream de volta,
+            // então ele emitirá um 'play-stream' logo em seguida.
+        });
 
-    document.getElementById("btnPlay").onclick = () => radio.play().catch(() => {});
-    document.getElementById("btnStop").onclick = () => radio.pause();
+        socket.on('disconnect', () => {
+            console.log('Desconectado do servidor Socket.IO');
+            currentStreamInfo.textContent = "Desconectado do servidor. Tentando reconectar...";
+            loadingIndicator.classList.remove('active');
+            updateButtonStates(false);
+            manualOverrideStatus.classList.remove('active'); // Limpa o status manual ao desconectar
+        });
 
-    socket.on("connect", () => console.log("Socket.IO conectado"));
-    socket.on("disconnect", () => console.log("Socket.IO desconectado"));
-  </script>
+        // Inicialização: Apenas atualiza o estado dos botões.
+        updateButtonStates(false); // Começa com botões de play habilitados
+        currentStreamInfo.textContent = "Aguardando conexão com a rádio...";
+
+    </script>
 </body>
 </html>
-EOF
