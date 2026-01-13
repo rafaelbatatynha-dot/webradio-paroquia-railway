@@ -10,6 +10,8 @@ const { google } = require("googleapis");
 const { spawn, exec } = require("child_process");
 const ytdl = require("ytdl-core");
 const path = require("path");
+const { PassThrough } = require('stream'); // Importa PassThrough
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
@@ -30,7 +32,7 @@ const STREAMS = {
     description: "Voz do Coração Imaculado",
   },
   classica: {
-    url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128",
+    url: "https://stream.srg-ssr.ch/m/m/rsc_de/mp3_128", // Corrigido URL para o que você forneceu antes
     description: "Música Clássica",
   },
   missaYoutube: {
@@ -380,6 +382,10 @@ app.get("/stream", async (req, res) => {
     // Proxy normal (http/https)
     const target = new URL(url);
     const client = target.protocol === "https:" ? https : http;
+
+    // Cria um PassThrough stream para bufferização
+    const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+
     const upstreamReq = client.request(
       {
         hostname: target.hostname,
@@ -395,15 +401,27 @@ app.get("/stream", async (req, res) => {
         },
       },
       (streamRes) => {
-        res.writeHead(200, { "Content-Type": "audio/mpeg" });
-        streamRes.pipe(res);
+        // Copia os headers da resposta original para o cliente
+        Object.keys(streamRes.headers).forEach(key => {
+            if (key.toLowerCase() !== 'transfer-encoding') { // Evita problemas com transfer-encoding
+                res.setHeader(key, streamRes.headers[key]);
+            }
+        });
+        res.writeHead(streamRes.statusCode, { "Content-Type": "audio/mpeg" }); // Garante Content-Type correto
+
+        streamRes.pipe(passthrough).pipe(res); // Pipe através do PassThrough
+
         streamRes.on("error", (e) => {
-          log("Erro streamRes: " + e.message);
+          log("Erro streamRes (upstream): " + e.message);
+          passthrough.destroy(e); // Destrói o passthrough em caso de erro
+        });
+        streamRes.on("close", () => {
+            log("Stream upstream fechado.");
         });
       }
     );
     upstreamReq.on("error", (e) => {
-      log(`Erro no proxy do stream: ${e.message}`);
+      log(`Erro no proxy do stream (upstreamReq): ${e.message}`);
       try {
         res.status(500).end("Erro ao carregar stream.");
       } catch (err) {}
