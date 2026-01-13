@@ -50,16 +50,6 @@
             margin-bottom: 20px;
             min-height: 1.5em; /* Garante espaço mesmo sem texto */
         }
-        #manual-override-status {
-            font-size: 1em;
-            font-weight: bold;
-            color: #dc3545; /* Vermelho para indicar modo manual */
-            margin-bottom: 15px;
-            display: none; /* Escondido por padrão */
-        }
-        #manual-override-status.active {
-            display: block;
-        }
         audio {
             width: 100%;
             margin-top: 20px;
@@ -79,73 +69,65 @@
             border: none;
             padding: 12px 25px;
             border-radius: 8px;
-            font-size: 1.1em;
             cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
             transition: background-color 0.3s ease, transform 0.2s ease;
-            min-width: 150px;
-            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);
+            flex-grow: 1; /* Permite que os botões cresçam */
+            min-width: 150px; /* Largura mínima para botões */
         }
         button:hover {
             background-color: #0056b3;
             transform: translateY(-2px);
         }
-        button:active {
-            transform: translateY(0);
-        }
         button:disabled {
             background-color: #cccccc;
             cursor: not-allowed;
-            box-shadow: none;
-        }
-        .test-streams-section {
-            margin-top: 40px;
-            padding-top: 30px;
-            border-top: 1px dashed #ddd;
-        }
-        .test-streams-section .button-group {
-            margin-top: 20px;
-        }
-        .test-streams-section button {
-            background-color: #28a745; /* Verde para streams de teste */
-            box-shadow: 0 4px 10px rgba(40, 167, 69, 0.2);
-        }
-        .test-streams-section button:hover {
-            background-color: #218838;
-        }
-        #reset-auto-button {
-            background-color: #ffc107; /* Amarelo para reset */
-            color: #333;
-            box-shadow: 0 4px 10px rgba(255, 193, 7, 0.2);
-        }
-        #reset-auto-button:hover {
-            background-color: #e0a800;
+            transform: none;
         }
         .message-status {
             margin-top: 15px;
-            font-size: 1em;
-            color: #666;
-        }
-        .message-status.playing {
-            color: #dc3545;
-            font-weight: bold;
+            font-style: italic;
+            color: #28a745;
+            min-height: 1.2em;
         }
         .loading-indicator {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #ffc107;
             display: none; /* Escondido por padrão */
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #888;
         }
         .loading-indicator.active {
             display: block;
+        }
+        .test-streams-section {
+            margin-top: 40px;
+            border-top: 1px solid #eee;
+            padding-top: 30px;
+        }
+        /* Responsividade básica */
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+            h1 {
+                font-size: 1.8em;
+            }
+            h2 {
+                font-size: 1.4em;
+            }
+            button {
+                width: 100%; /* Botões ocupam largura total em telas pequenas */
+                min-width: unset;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Web Rádio Paróquia</h1>
+        <p id="current-stream-info">Aguardando conexão com a rádio...</p>
 
-        <div id="current-stream-info">Carregando...</div>
-        <div id="manual-override-status">MODO MANUAL ATIVO - Agendamentos suspensos!</div>
         <audio id="main-audio-player" controls autoplay></audio>
 
         <div class="button-group">
@@ -165,8 +147,8 @@
                 <button id="test-maraba-button">Rádio Marabá</button>
                 <button id="test-classica-button">Música Clássica</button>
                 <button id="test-missa-youtube-button">Missa Sábado (YouTube)</button>
-                <!-- Adicione mais botões de teste aqui se tiver outros streams no STREAMS do server.js -->
-                <button id="reset-auto-button">Voltar para Programação Automática</button>
+                <button id="play-random-message-button">Tocar Mensagem (Aleatória)</button> <!-- NOVO BOTÃO -->
+                <button id="return-to-imaculado-button">Voltar para Voz do Coração Imaculado</button>
             </div>
         </div>
     </div>
@@ -176,7 +158,6 @@
         const socket = io();
         const audioPlayer = document.getElementById('main-audio-player');
         const currentStreamInfo = document.getElementById('current-stream-info');
-        const manualOverrideStatus = document.getElementById('manual-override-status');
         const messageStatus = document.getElementById('message-status');
         const loadingIndicator = document.getElementById('loading-indicator');
 
@@ -188,7 +169,8 @@
         const testMarabaButton = document.getElementById('test-maraba-button');
         const testClassicaButton = document.getElementById('test-classica-button');
         const testMissaYoutubeButton = document.getElementById('test-missa-youtube-button');
-        const resetAutoButton = document.getElementById('reset-auto-button');
+        const playRandomMessageButton = document.getElementById('play-random-message-button'); // NOVO
+        const returnToImaculadoButton = document.getElementById('return-to-imaculado-button');
 
         let currentStreamDescription = "Voz do Coração Imaculado"; // Valor inicial
 
@@ -196,41 +178,49 @@
             playMainButton.disabled = isPlaying;
             pauseMainButton.disabled = !isPlaying;
             stopMainButton.disabled = !isPlaying;
-            // Os botões de teste e reset podem estar sempre ativos para permitir o controle
+            // Os botões de teste e retorno sempre ficam ativos para permitir override
+            testMarabaButton.disabled = false;
+            testClassicaButton.disabled = false;
+            testMissaYoutubeButton.disabled = false;
+            playRandomMessageButton.disabled = false; // NOVO
+            returnToImaculadoButton.disabled = false;
         }
 
         function startStream(url, description) {
-            currentStreamDescription = description;
-            currentStreamInfo.textContent = `Reproduzindo: ${description}`;
+            if (audioPlayer.src === url && !audioPlayer.paused) {
+                console.log(`Stream ${description} já está tocando.`);
+                currentStreamInfo.textContent = `Reproduzindo: ${description}`;
+                loadingIndicator.classList.remove('active');
+                updateButtonStates(true);
+                return;
+            }
+
+            console.log(`Iniciando stream: ${description} (${url})`);
+            currentStreamInfo.textContent = `Carregando: ${description}...`;
             loadingIndicator.classList.add('active');
+            updateButtonStates(false); // Desabilita enquanto carrega
+
             audioPlayer.src = url;
-            audioPlayer.load(); // Recarrega a fonte
+            audioPlayer.load(); // Recarrega o player
             audioPlayer.play().then(() => {
+                currentStreamDescription = description; // Atualiza a descrição global
+                currentStreamInfo.textContent = `Reproduzindo: ${description}`;
                 loadingIndicator.classList.remove('active');
                 updateButtonStates(true);
             }).catch(error => {
-                console.error("Erro ao tentar tocar o stream:", error);
-                currentStreamInfo.textContent = `Erro ao reproduzir: ${description}. Tente novamente.`;
+                console.error("Erro ao tocar stream:", error);
+                currentStreamInfo.textContent = `Erro ao carregar: ${description}. Tentando novamente...`;
                 loadingIndicator.classList.remove('active');
                 updateButtonStates(false);
+                // Tenta tocar novamente após um pequeno atraso em caso de erro
+                setTimeout(() => startStream(url, description), 3000);
             });
         }
-
-        // Event Listeners para o player de áudio
-        audioPlayer.addEventListener('playing', () => updateButtonStates(true));
-        audioPlayer.addEventListener('pause', () => updateButtonStates(false));
-        audioPlayer.addEventListener('ended', () => updateButtonStates(false));
-        audioPlayer.addEventListener('error', (e) => {
-            console.error("Erro no player de áudio:", e);
-            currentStreamInfo.textContent = `Erro de reprodução. Tente novamente.`;
-            loadingIndicator.classList.remove('active');
-            updateButtonStates(false);
-        });
 
         // Event Listeners para os botões principais
         playMainButton.addEventListener('click', () => {
             // Ao clicar em tocar, sempre tenta o stream principal (/stream)
-            startStream('/stream', currentStreamDescription);
+            socket.emit('return-to-imaculado'); // Garante que o servidor volte para o principal
         });
         pauseMainButton.addEventListener('click', () => {
             audioPlayer.pause();
@@ -251,7 +241,7 @@
             updateButtonStates(false);
         });
 
-        // Event Listeners para os botões de teste
+        // Event Listeners para os botões de teste / override
         testMarabaButton.addEventListener('click', () => {
             socket.emit('change-stream', 'maraba');
         });
@@ -261,11 +251,12 @@
         testMissaYoutubeButton.addEventListener('click', () => {
             socket.emit('change-stream', 'missaYoutube');
         });
-        // NOVO: Botão para resetar para programação automática
-        resetAutoButton.addEventListener('click', () => {
-            socket.emit('reset-to-auto');
+        playRandomMessageButton.addEventListener('click', () => { // NOVO
+            socket.emit('play-random-message');
         });
-        // Adicione mais listeners para outros streams de teste aqui
+        returnToImaculadoButton.addEventListener('click', () => {
+            socket.emit('return-to-imaculado');
+        });
 
         // Socket.IO Listeners
         socket.on('connect', () => {
@@ -276,11 +267,6 @@
         socket.on('play-stream', (data) => {
             console.log('Recebido comando play-stream:', data);
             startStream(data.url, data.description);
-            if (data.manualOverride) {
-                manualOverrideStatus.classList.add('active');
-            } else {
-                manualOverrideStatus.classList.remove('active');
-            }
         });
 
         socket.on('play-message', (data) => {
@@ -292,6 +278,7 @@
             audioPlayer.src = data.url;
             audioPlayer.load();
             audioPlayer.play().then(() => {
+                currentStreamDescription = data.description; // Atualiza a descrição global
                 currentStreamInfo.textContent = `Reproduzindo: ${data.description}`;
                 loadingIndicator.classList.remove('active');
                 updateButtonStates(true);
@@ -316,10 +303,11 @@
             currentStreamInfo.textContent = "Desconectado do servidor. Tentando reconectar...";
             loadingIndicator.classList.remove('active');
             updateButtonStates(false);
-            manualOverrideStatus.classList.remove('active'); // Limpa o status manual ao desconectar
         });
 
-        // Inicialização: Apenas atualiza o estado dos botões.
+        // Inicialização: Tenta tocar o stream principal automaticamente ao carregar
+        // O servidor enviará o 'play-stream' ao conectar, então não precisamos de um play inicial aqui.
+        // Apenas atualiza o estado dos botões.
         updateButtonStates(false); // Começa com botões de play habilitados
         currentStreamInfo.textContent = "Aguardando conexão com a rádio...";
 

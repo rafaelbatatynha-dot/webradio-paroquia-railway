@@ -44,8 +44,7 @@ let currentStream = STREAMS.imaculado;
 let previousStream = STREAMS.imaculado;
 let messages = [];
 let isPlayingMessage = false;
-let blockRunning = false;
-let manualOverrideActive = false; // NOVO: Flag para modo manual
+let blockRunning = false; // Bloqueia a execução de múltiplos blocos de programação
 // Conexões ativas do endpoint /stream (PONTO-CHAVE para trocar programação)
 const activeStreamResponses = new Set();
 // ---------------------- LOG ----------------------
@@ -112,252 +111,230 @@ function resumeStream() {
   io.emit("play-stream", {
     url: "/stream",
     description: currentStream.description,
-    manualOverride: manualOverrideActive // Envia o estado do override
   });
-  log(`Retomando stream principal: ${currentStream.description}. Manual Override: ${manualOverrideActive}`);
+  log(`Retomando stream principal: ${currentStream.description}`);
 }
 function playMessage(messageUrl, messageName) {
   previousStream = currentStream; // Salva o stream atual antes de tocar a mensagem
   isPlayingMessage = true;
   io.emit("play-message", { url: messageUrl, description: messageName });
-  log(`Reproduzindo mensagem: ${messageName}`);
+  log(`Tocando mensagem: ${messageName}`);
 }
-function stopMessage() {
+function stopMessageAndResumePrevious() {
   isPlayingMessage = false;
-  io.emit("stop-message");
-  log("Mensagem finalizada. Retomando stream anterior.");
+  io.emit("stop-message"); // Informa clientes que a mensagem parou
+  currentStream = previousStream; // Volta para o stream que estava tocando antes da mensagem
+  resumeStream(); // Retoma o stream principal
+  log(`Mensagem finalizada. Retomando stream: ${currentStream.description}`);
 }
+// Função para mudar o stream principal (usada por agendamentos e override manual)
 function changeStream(newStream) {
-  if (currentStream.url === newStream.url) {
-    log(`Stream já é ${newStream.description}. Nenhuma mudança necessária.`);
-    return;
-  }
-  currentStream = newStream;
-  resumeStream();
+    if (currentStream.url === newStream.url) {
+        log(`Stream já é ${newStream.description}. Nenhuma mudança necessária.`);
+        return;
+    }
+    currentStream = newStream;
+    resumeStream(); // Força a troca para o novo stream
 }
-// ---------------------- CRON JOBS ----------------------
-log("Agendamentos carregados (timezone fixo BR).");
-
-// CRON TESTE: Dispara a cada minuto para verificar o fuso horário e o funcionamento do cron
+// ---------------------- CRON JOBS (AGENDAMENTOS) ----------------------
+// Função para obter a data e hora atual no fuso horário do servidor
+function getServerTimeInTZ() {
+    return new Date().toLocaleString("en-US", { timeZone: TZ });
+}
+// CRON TESTE: Dispara a cada minuto para verificar se o cron está ativo
 cron.schedule('* * * * *', () => {
-  const serverTime = new Date();
-  const serverTimeBR = new Date().toLocaleString('pt-BR', { timeZone: TZ });
-  log(`CRON TESTE: Disparado a cada minuto. UTC: ${serverTime.toISOString()} | BR (${TZ}): ${serverTimeBR}. Manual Override: ${manualOverrideActive}`);
+    const serverTime = new Date();
+    log(`CRON TESTE: Disparado a cada minuto. UTC: ${serverTime.toISOString()} | BR: ${serverTime.toLocaleString('pt-BR', { timeZone: TZ })}`);
 }, {
-  scheduled: true,
-  timezone: TZ // Garante que o cron use o fuso horário correto para agendamento
+    scheduled: true,
+    timezone: TZ // Garante que o cron use o fuso horário correto para agendamento
 });
-
 // Exemplo de agendamento: Rádio Marabá às 00:10 BR (03:10 UTC)
-cron.schedule('10 0 * * *', () => { // 00:10 BR
-  if (manualOverrideActive) {
-    log(`CRON: 00:10 BR – Rádio Marabá ignorado devido a Manual Override ativo.`);
-    return;
-  }
-  log(`CRON: 00:10 BR – Iniciando Rádio Marabá.`);
-  changeStream(STREAMS.maraba);
+cron.schedule('10 0 * * *', () => { // 10 minutos depois da meia-noite (00:10)
+    log(`CRON: 00:10 BR – Iniciando Rádio Marabá`);
+    changeStream(STREAMS.maraba);
 }, {
-  scheduled: true,
-  timezone: TZ
+    scheduled: true,
+    timezone: TZ
 });
-
-// Exemplo de agendamento: Música Clássica às 00:20 BR (03:20 UTC)
-cron.schedule('20 0 * * *', () => { // 00:20 BR
-  if (manualOverrideActive) {
-    log(`CRON: 00:20 BR – Música Clássica ignorado devido a Manual Override ativo.`);
-    return;
-  }
-  log(`CRON: 00:20 BR – Iniciando Música Clássica.`);
-  changeStream(STREAMS.classica);
+// Exemplo de agendamento: Música Clássica às 01:00 BR (04:00 UTC)
+cron.schedule('0 1 * * *', () => { // 1 hora da manhã (01:00)
+    log(`CRON: 01:00 BR – Iniciando Música Clássica`);
+    changeStream(STREAMS.classica);
 }, {
-  scheduled: true,
-  timezone: TZ
+    scheduled: true,
+    timezone: TZ
 });
-
 // Exemplo de agendamento: Missa de Sábado (YouTube) às 19:00 BR (22:00 UTC)
-cron.schedule('0 19 * * 6', () => { // Sábado às 19:00 BR
-  if (manualOverrideActive) {
-    log(`CRON: Sábado 19:00 BR – Missa de Sábado ignorado devido a Manual Override ativo.`);
-    return;
-  }
-  log(`CRON: Sábado 19:00 BR – Iniciando Missa de Sábado (YouTube).`);
-  changeStream(STREAMS.missaYoutube);
+cron.schedule('0 19 * * 6', () => { // Sábado às 19:00
+    log(`CRON: Sábado 19:00 BR – Iniciando Missa de Sábado (YouTube)`);
+    changeStream(STREAMS.missaYoutube);
 }, {
-  scheduled: true,
-  timezone: TZ
+    scheduled: true,
+    timezone: TZ
 });
-
-// Exemplo de agendamento: Retorno para Voz do Coração Imaculado às 00:30 BR (03:30 UTC)
-cron.schedule('30 0 * * *', () => { // 00:30 BR
-  if (manualOverrideActive) {
-    log(`CRON: 00:30 BR – Retorno para Voz do Coração Imaculado ignorado devido a Manual Override ativo.`);
-    return;
-  }
-  log(`CRON: 00:30 BR – Retornando para Voz do Coração Imaculado.`);
-  changeStream(STREAMS.imaculado);
+// Exemplo de agendamento: Tocar uma mensagem do Google Drive a cada 30 minutos
+cron.schedule('*/30 * * * *', () => {
+    if (messages.length > 0 && !isPlayingMessage) {
+        const randomIndex = Math.floor(Math.random() * messages.length);
+        const message = messages[randomIndex];
+        log(`CRON: Tocando mensagem agendada: ${message.name}`);
+        playMessage(message.url, message.name);
+        // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
+        setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
+    } else if (isPlayingMessage) {
+        log("CRON: Ignorando agendamento de mensagem, pois uma mensagem já está tocando.");
+    } else {
+        log("CRON: Nenhuma mensagem disponível para tocar.");
+    }
 }, {
-  scheduled: true,
-  timezone: TZ
+    scheduled: true,
+    timezone: TZ
 });
-
-// Exemplo de agendamento: Retorno para Voz do Coração Imaculado após a Missa de Sábado às 20:30 BR (23:30 UTC)
-cron.schedule('30 20 * * 6', () => { // Sábado às 20:30 BR
-  if (manualOverrideActive) {
-    log(`CRON: Sábado 20:30 BR – Retorno para Voz do Coração Imaculado ignorado devido a Manual Override ativo.`);
-    return;
-  }
-  log(`CRON: Sábado 20:30 BR – Retornando para Voz do Coração Imaculado após Missa.`);
-  changeStream(STREAMS.imaculado);
-}, {
-  scheduled: true,
-  timezone: TZ
-});
-
-// Agendamento de mensagem (exemplo: a cada 5 minutos, se houver mensagens e não estiver tocando outra)
-cron.schedule('*/5 * * * *', async () => {
-  if (manualOverrideActive) {
-    log(`CRON: Mensagem ignorada devido a Manual Override ativo.`);
-    return;
-  }
-  if (messages.length > 0 && !isPlayingMessage && !blockRunning) {
-    blockRunning = true; // Bloqueia para evitar múltiplas execuções
-    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-    playMessage(randomMessage.url, randomMessage.name);
-
-    // Determinar a duração da mensagem (pode ser necessário buscar metadados ou estimar)
-    // Por simplicidade, vamos usar um tempo fixo para este exemplo
-    const messageDurationMs = 30 * 1000; // Exemplo: 30 segundos
-
-    await new Promise(resolve => setTimeout(resolve, messageDurationMs));
-    stopMessage();
-    // Após a mensagem, o servidor deve emitir um 'play-stream' para retomar o stream principal
-    // Isso já é tratado por `stopMessage` que não chama `resumeStream` diretamente,
-    // mas o cliente espera um `play-stream` do servidor.
-    // Para garantir que o cliente retome o stream principal, podemos forçar um `resumeStream` aqui.
-    resumeStream(); // Garante que o cliente volte para o stream principal
-    blockRunning = false;
-  }
-}, {
-  scheduled: true,
-  timezone: TZ
-});
-
-
-// ---------------------- ENDPOINTS ----------------------
+// ---------------------- ENDPOINT DE STREAM ----------------------
 app.get("/stream", (req, res) => {
   // Adiciona a resposta ao conjunto de conexões ativas
   activeStreamResponses.add(res);
-  // Remove do conjunto quando a conexão é fechada
   req.on("close", () => {
     activeStreamResponses.delete(res);
-    // log("Conexão de stream fechada."); // Opcional: logar fechamento
   });
-
   try {
     const url = currentStream.url;
-
     if (url.includes("youtube.com")) {
-      try {
-        const ytStream = ytdl(url, {
-          filter: "audioonly",
-          quality: "highestaudio",
-          highWaterMark: 1 << 25,
-        });
-        exec("which ffmpeg", (err) => {
-          // Se não tiver ffmpeg, manda direto (pode funcionar em alguns players, mas nem sempre)
-          if (err) {
-            res.writeHead(200, { "Content-Type": "audio/mpeg" });
-            ytStream.pipe(res);
-            return;
-          }
-          const ff = spawn("ffmpeg", [
-            "-i",
-            "pipe:0",
-            "-f",
-            "mp3",
-            "-codec:a",
-            "libmp3lame",
-            "-b:a",
-            "128k",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "pipe:1",
-          ]);
-          ytStream.pipe(ff.stdin);
-          res.writeHead(200, { "Content-Type": "audio/mpeg" });
-          ff.stdout.pipe(res);
-          ff.on("error", (e) => {
-            log("FFmpeg erro: " + e.message);
-          });
-          ff.on("close", () => {
-            try {
-              ytStream.destroy();
-            } catch (e) {}
-          });
-        });
-        return;
-      } catch (err) {
-        log(`Erro YouTube: ${err.message}. Voltando para Imaculado.`);
-        currentStream = STREAMS.imaculado;
-        resumeStream();
-        res.status(500).end("Erro ao processar YouTube.");
-        return;
-      }
-    }
-    // Proxy normal (http/https)
-    const target = new URL(url);
-    const client = target.protocol === "https:" ? https : http;
-
-    // Cria um PassThrough stream para bufferização
-    const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
-
-    const upstreamReq = client.request(
-      {
-        hostname: target.hostname,
-        port:
-          target.port ||
-          (target.protocol === "https:" ? 443 : 80),
-        path: target.pathname + target.search,
-        method: "GET",
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          // "Icy-MetaData": "1", // REMOVIDO PARA TESTE
-          // Connection: "keep-alive", // REMOVIDO PARA TESTE
-        },
-      },
-      (streamRes) => {
+      // Lógica para YouTube (FFmpeg)
+      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+      const audio = ytdl(url, {
+        quality: "lowestaudio",
+        filter: "audioonly",
+        highWaterMark: 1 << 25, // 32MB buffer para ytdl
+      });
+      const ffmpeg = spawn("ffmpeg", [
+        "-i",
+        "pipe:0", // Entrada do pipe
+        "-f",
+        "mp3", // Formato de saída MP3
+        "-ab",
+        "128k", // Bitrate de áudio 128kbps
+        "-ar",
+        "44100", // Sample rate 44.1kHz
+        "-ac",
+        "2", // 2 canais (estéreo)
+        "pipe:1", // Saída para o pipe
+      ]);
+      audio.pipe(ffmpeg.stdin);
+      res.writeHead(200, { "Content-Type": "audio/mpeg" });
+      ffmpeg.stdout.pipe(passthrough).pipe(res); // Pipe através do PassThrough
+      ffmpeg.stderr.on("data", (data) => {
+        log(`FFmpeg stderr: ${data}`);
+      });
+      ffmpeg.on("close", (code) => {
+        if (code !== 0) {
+          log(`FFmpeg exited with code ${code}`);
+        }
+        passthrough.destroy(); // Garante que o passthrough seja fechado
+      });
+      audio.on("error", (e) => {
+        log("Erro ytdl: " + e.message);
+        ffmpeg.kill();
+        passthrough.destroy(e);
+        try {
+          res.status(500).end("Erro ao carregar stream do YouTube.");
+        } catch (err) {}
+      });
+      ffmpeg.on("error", (e) => {
+        log("Erro FFmpeg: " + e.message);
+        passthrough.destroy(e);
+        try {
+          res.status(500).end("Erro ao processar stream do YouTube.");
+        } catch (err) {}
+      });
+      passthrough.on("error", (e) => { // Adicionado tratamento de erro para o passthrough
+        log("Erro passthrough (YouTube): " + e.message);
+        try { res.end(); } catch (err) {}
+      });
+    } else if (url.includes("drive.google.com")) {
+      // Lógica para Google Drive (mensagens) com PassThrough
+      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+      const driveReq = https.request(url, (driveRes) => {
         // Copia os headers da resposta original para o cliente
-        Object.keys(streamRes.headers).forEach(key => {
-            if (key.toLowerCase() !== 'transfer-encoding') { // Evita problemas com transfer-encoding
-                res.setHeader(key, streamRes.headers[key]);
+        Object.keys(driveRes.headers).forEach(key => {
+            if (key.toLowerCase() !== 'transfer-encoding') {
+                res.setHeader(key, driveRes.headers[key]);
             }
         });
-        res.writeHead(streamRes.statusCode, { "Content-Type": "audio/mpeg" }); // Garante Content-Type correto
+        res.writeHead(driveRes.statusCode, { "Content-Type": "audio/mpeg" }); // Garante Content-Type correto
+        driveRes.pipe(passthrough).pipe(res); // Pipe através do PassThrough
 
-        streamRes.pipe(passthrough).pipe(res); // Pipe através do PassThrough
-
-        streamRes.on("error", (e) => {
-          log("Erro streamRes (upstream): " + e.message);
-          passthrough.destroy(e); // Destrói o passthrough em caso de erro
+        driveRes.on("error", (e) => {
+          log("Erro driveRes (Google Drive upstream): " + e.message);
+          passthrough.destroy(e);
         });
-        passthrough.on("error", (e) => { // Adicionado tratamento de erro para o passthrough
-            log("Erro passthrough: " + e.message);
+        passthrough.on("error", (e) => {
+            log("Erro passthrough (Google Drive): " + e.message);
             try { res.end(); } catch (err) {}
         });
-        streamRes.on("close", () => {
-            log("Stream upstream fechado.");
+        driveRes.on("close", () => {
+            log("Stream Google Drive upstream fechado.");
         });
-      }
-    );
-    upstreamReq.on("error", (e) => {
-      log(`Erro no proxy do stream (upstreamReq): ${e.message}`);
-      try {
-        res.status(500).end("Erro ao carregar stream.");
-      } catch (err) {}
-    });
-    upstreamReq.end();
+      });
+      driveReq.on("error", (e) => {
+        log("Erro Google Drive stream (driveReq): " + e.message);
+        try {
+          res.status(500).end("Erro ao carregar stream do Google Drive.");
+        } catch (err) {}
+      });
+      driveReq.end();
+    } else {
+      // Proxy normal (http/https)
+      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+      const target = new URL(url);
+      const client = target.protocol === "https:" ? https : http;
+      const upstreamReq = client.request(
+        {
+          hostname: target.hostname,
+          port:
+            target.port ||
+            (target.protocol === "https:" ? 443 : 80),
+          path: target.pathname + target.search,
+          method: "GET",
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            // "Icy-MetaData": "1", // REMOVIDO PARA TESTE
+            // Connection: "keep-alive", // REMOVIDO PARA TESTE
+          },
+        },
+        (streamRes) => {
+          // Copia os headers da resposta original para o cliente
+          Object.keys(streamRes.headers).forEach(key => {
+              if (key.toLowerCase() !== 'transfer-encoding') { // Evita problemas com transfer-encoding
+                  res.setHeader(key, streamRes.headers[key]);
+              }
+          });
+          res.writeHead(streamRes.statusCode, { "Content-Type": "audio/mpeg" }); // Garante Content-Type correto
+
+          streamRes.pipe(passthrough).pipe(res); // Pipe através do PassThrough
+
+          streamRes.on("error", (e) => {
+            log("Erro streamRes (upstream): " + e.message);
+            passthrough.destroy(e); // Destrói o passthrough em caso de erro
+          });
+          passthrough.on("error", (e) => { // Adicionado tratamento de erro para o passthrough
+              log("Erro passthrough (Direto): " + e.message);
+              try { res.end(); } catch (err) {}
+          });
+          streamRes.on("close", () => {
+              log("Stream upstream fechado.");
+          });
+        }
+      );
+      upstreamReq.on("error", (e) => {
+        log(`Erro no proxy do stream (upstreamReq): ${e.message}`);
+        try {
+          res.status(500).end("Erro ao carregar stream.");
+        } catch (err) {}
+      });
+      upstreamReq.end();
+    }
   } catch (err) {
     log(`Erro geral no /stream: ${err.message}`);
     try {
@@ -376,7 +353,6 @@ app.get("/health", (req, res) => {
     activeStreamConnections: activeStreamResponses.size,
     isPlayingMessage,
     blockRunning,
-    manualOverrideActive: manualOverrideActive // NOVO: Estado do override manual
   });
 });
 // ---------------------- SOCKET.IO ----------------------
@@ -385,40 +361,46 @@ io.on("connection", (socket) => {
   socket.emit("play-stream", {
     url: "/stream",
     description: currentStream.description,
-    manualOverride: manualOverrideActive // Envia o estado do override
   });
-
-  // Listener para forçar reconexão do player
-  socket.on("force-reconnect", () => {
-    log("Recebido comando para forçar reconexão do player via Socket.IO.");
-    // Não altera o manualOverrideActive aqui, apenas força o re-emit
-    io.emit("play-stream", {
-        url: "/stream",
-        description: currentStream.description,
-        manualOverride: manualOverrideActive
-    });
-  });
-
   // Listener para trocar o stream via Socket.IO (para os botões de teste)
   socket.on('change-stream', (streamKey) => {
       const newStream = STREAMS[streamKey];
       if (newStream) {
           log(`Recebido comando para mudar stream para: ${newStream.description} via Socket.IO.`);
-          manualOverrideActive = true; // Ativa o modo manual
           changeStream(newStream); // Usa a função existente para mudar o stream
       } else {
           log(`Erro: Stream key '${streamKey}' inválida recebida via Socket.IO.`);
       }
   });
-
-  // NOVO: Listener para resetar para programação automática
-  socket.on('reset-to-auto', () => {
-      log(`Recebido comando para resetar para programação automática.`);
-      manualOverrideActive = false; // Desativa o modo manual
-      currentStream = STREAMS.imaculado; // Volta para o stream principal padrão
-      resumeStream(); // Retoma o stream principal e notifica clientes
+  // NOVO: Listener para retornar ao stream principal (Voz do Coração Imaculado)
+  socket.on('return-to-imaculado', () => {
+      log(`Recebido comando para retornar ao stream principal (Voz do Coração Imaculado) via Socket.IO.`);
+      changeStream(STREAMS.imaculado);
   });
-
+  // NOVO: Listener para tocar uma mensagem aleatória do Google Drive
+  socket.on('play-random-message', () => {
+      if (messages.length > 0) {
+          const randomIndex = Math.floor(Math.random() * messages.length);
+          const message = messages[randomIndex];
+          log(`Recebido comando para tocar mensagem aleatória: ${message.name} via Socket.IO.`);
+          playMessage(message.url, message.name);
+          // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
+          setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
+      } else {
+          log("Recebido comando para tocar mensagem aleatória, mas nenhuma mensagem disponível.");
+          // Opcional: emitir um evento para o cliente informar que não há mensagens
+      }
+  });
+  // Listener para forçar reconexão do player
+  socket.on("force-reconnect", () => {
+      log("Recebido comando para forçar reconexão do player via Socket.IO.");
+      // Não precisamos mudar o currentStream, apenas forçar o cliente a reconectar
+      killActiveStreams(); // Derruba as conexões existentes
+      io.emit("play-stream", {
+          url: "/stream",
+          description: currentStream.description
+      });
+  });
   // (Opcional) ping
   socket.on("ping", () => socket.emit("pong"));
 });
