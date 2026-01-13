@@ -32,7 +32,7 @@ const STREAMS = {
     description: "Voz do Coração Imaculado",
   },
   classica: {
-    url: "https://stream.srg-ssr.ch/m/m/rsc_de/mp3_128", // Corrigido URL para o que você forneceu antes
+    url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128", // CORRIGIDO: URL da Música Clássica
     description: "Música Clássica",
   },
   missaYoutube: {
@@ -80,233 +80,17 @@ async function loadMessages(auth) {
     const files = resp.data.files || [];
     messages = files.map((f) => ({
       id: f.id,
-      name: f.name,
-      url: `https://drive.google.com/uc?id=${f.id}&export=download`,
-    }));
-    log(`Mensagens carregadas: ${messages.length}`);
-  } catch (err) {
-    log("Erro carregando mensagens: " + err.message);
-    messages = [];
-  }
-}
-async function startDrive() {
-  log("Iniciando carregamento de mensagens do Google Drive...");
-  const auth = await authenticateDrive();
-  await loadMessages(auth);
-  setInterval(() => loadMessages(auth), 30 * 60 * 1000); // 30 min
-}
-// ---------------------- TROCA DE STREAM (ESSENCIAL) ----------------------
-function killActiveStreams() {
-  // Derruba conexões antigas do /stream para forçar o player reconectar
-  for (const res of activeStreamResponses) {
-    try {
-      res.destroy();
-    } catch (e) {
-      // Ignora erros ao destruir, pois a conexão pode já ter sido fechada
-    }
-  }
-  activeStreamResponses.clear();
-  log("Conexões de stream ativas derrubadas.");
-}
-function resumeStream() {
-  // Troca REAL: mata streams ativos e manda o cliente reconectar
-  killActiveStreams();
-  io.emit("stop-mensagem");
-  io.emit("play-stream", {
-    url: "/stream",
-    description: currentStream.description,
-  });
-  log(`Stream atualizado para: ${currentStream.description}`);
-}
-// ---------------------- MENSAGENS ----------------------
-async function playRandomMessage() {
-  if (isPlayingMessage || messages.length === 0 || blockRunning) return;
-  previousStream = currentStream;
-  const msg = messages[Math.floor(Math.random() * messages.length)];
-  isPlayingMessage = true;
-  log("Mensagem aleatória: " + msg.name);
-  io.emit("play-mensagem", msg);
-  // Se você souber a duração real do áudio, o ideal é calcular. Aqui mantemos 60s.
-  await new Promise((r) => setTimeout(r, 60000));
-  isPlayingMessage = false;
-  currentStream = previousStream;
-  resumeStream();
-}
-async function playSequentialMessages() {
-  if (isPlayingMessage || messages.length === 0) return;
-  blockRunning = true;
-  previousStream = currentStream;
-  isPlayingMessage = true;
-  log("Início do bloco de mensagens sequenciais");
-  for (const msg of messages) {
-    io.emit("play-mensagem", msg);
-    log(`Reproduzindo mensagem: ${msg.name}`);
-    await new Promise((r) => setTimeout(r, 60000));
-  }
-  log("Fim do bloco de mensagens sequenciais");
-  isPlayingMessage = false;
-  blockRunning = false;
-  currentStream = previousStream;
-  resumeStream();
-}
-// ---------------------- AGENDAMENTOS (HORÁRIOS EM BR) ----------------------
-// Agendamentos de programação (horários em America/Sao_Paulo)
-// Exemplo: Música Clássica às 00:10 BR (03:10 UTC)
-cron.schedule(
-  "10 0 * * *",
-  () => {
-    log("CRON: 00:10 BR – Iniciando Música Clássica");
-    previousStream = currentStream;
-    currentStream = STREAMS.classica;
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Exemplo: Fim Música Clássica às 01:10 BR (04:10 UTC), voltando para a rádio anterior
-cron.schedule(
-  "10 1 * * *",
-  () => {
-    log("CRON: 01:10 BR – Fim Música Clássica, voltando para rádio anterior");
-    currentStream = previousStream; // Volta para o stream anterior
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Exemplo: Rádio Marabá às 07:00 BR (10:00 UTC)
-cron.schedule(
-  "0 7 * * *",
-  () => {
-    log("CRON: 07:00 BR – Iniciando Rádio Marabá");
-    previousStream = currentStream;
-    currentStream = STREAMS.maraba;
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Exemplo: Fim Rádio Marabá às 08:00 BR (11:00 UTC), voltando para a rádio anterior
-cron.schedule(
-  "0 8 * * *",
-  () => {
-    log("CRON: 08:00 BR – Fim Rádio Marabá, voltando para rádio anterior");
-    currentStream = previousStream;
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Exemplo: Bloco de Mensagens Sequenciais às 12:00 BR (15:00 UTC)
-cron.schedule(
-  "0 12 * * *",
-  () => {
-    log("CRON: 12:00 BR – Iniciando Bloco de Mensagens Sequenciais");
-    playSequentialMessages();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Exemplo: Mensagem Aleatória a cada 30 minutos (exceto durante blocos)
-cron.schedule(
-  "*/30 * * * *",
-  () => {
-    if (!blockRunning) {
-      log("CRON: Mensagem Aleatória (a cada 30 min)");
-      playRandomMessage();
-    }
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Missa de Sábado às 19:00 BR (22:00 UTC)
-cron.schedule(
-  "0 19 * * 6", // Sábado
-  () => {
-    log("CRON: 19:00 BR (Sábado) – Iniciando Missa YouTube");
-    previousStream = currentStream;
-    currentStream = STREAMS.missaYoutube;
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Fim Missa de Sábado às 20:30 BR (23:30 UTC)
-cron.schedule(
-  "30 20 * * 6", // Sábado
-  () => {
-    log("CRON: 20:30 BR (Sábado) – Fim Missa Sábado, voltando para Voz do Coração Imaculado");
-    currentStream = STREAMS.imaculado; // Volta para a rádio principal
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Missa de Domingo às 08:00 BR (11:00 UTC)
-cron.schedule(
-  "0 8 * * 0", // Domingo
-  () => {
-    log("CRON: 08:00 BR (Domingo) – Iniciando Missa YouTube");
-    previousStream = currentStream;
-    currentStream = STREAMS.missaYoutube;
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-// Fim Missa de Domingo às 09:30 BR (12:30 UTC)
-cron.schedule(
-  "30 9 * * 0", // Domingo
-  () => {
-    log("CRON: 09:30 BR (Domingo) – Fim Missa Domingo, voltando para Voz do Coração Imaculado");
-    currentStream = STREAMS.imaculado; // Volta para a rádio principal
-    resumeStream();
-  },
-  {
-    scheduled: true,
-    timezone: TZ,
-  }
-);
-
-log("Agendamentos de programação carregados.");
-
-// ---------------------- CRON DE TESTE (A CADA MINUTO) ----------------------
-// Este cron será removido após a depuração.
+      na..puração.
 cron.schedule('* * * * *', () => {
     const serverTime = new Date();
-    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
-    log(`CRON TESTE: Fuso horário do servidor: ${serverTime.toString().match(/|
+    const timezoneMatch = serverTime.toString().match(/|
 $
 ([^)]+)
 $
-|/)[1] || 'Não detectado'}`);
+|/);
+    const timezoneName = timezoneMatch ? timezoneMatch[1] : 'Não detectado';
+    log(`CRON TESTE: Disparado a cada minuto. Hora do servidor (UTC): ${serverTime.toISOString()}`);
+    log(`CRON TESTE: Fuso horário do servidor: ${timezoneName}`); // CORRIGIDO: Expressão regular
 }, {
     scheduled: true,
     timezone: TZ // Usar o fuso horário fixo para o cron de teste também
