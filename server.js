@@ -74,14 +74,15 @@ async function loadMessages(auth) {
     const drive = google.drive({ version: "v3", auth });
     const resp = await drive.files.list({
       q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio'`,
-      fields: "files(id,name)",
+      fields: "files(id,name,webContentLink)", // NOVO: Pedir webContentLink
       pageSize: 500,
     });
     const files = resp.data.files || [];
     messages = files.map((f) => ({
       id: f.id,
       name: f.name,
-      url: `https://drive.google.com/uc?id=${f.id}&export=download`,
+      // NOVO: Usar a API de exportação de mídia diretamente
+      url: `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,
     }));
     log(`Mensagens carregadas: ${messages.length}`);
   } catch (err) {
@@ -173,8 +174,24 @@ cron.schedule('0 19 * * 6', () => { // Sábado às 19:00
     scheduled: true,
     timezone: TZ
 });
-// Exemplo de agendamento: Tocar uma mensagem do Google Drive a cada 30 minutos
-cron.schedule('*/30 * * * *', () => {
+// Exemplo de agendamento: Retorno à Voz do Coração Imaculado às 02:00 BR (05:00 UTC)
+cron.schedule('0 2 * * *', () => { // 2 horas da manhã (02:00)
+    log(`CRON: 02:00 BR – Retornando à Voz do Coração Imaculado`);
+    changeStream(STREAMS.imaculado);
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+// Exemplo de agendamento: Retorno à Voz do Coração Imaculado às 20:00 BR (23:00 UTC) no sábado
+cron.schedule('0 20 * * 6', () => { // Sábado às 20:00
+    log(`CRON: Sábado 20:00 BR – Retornando à Voz do Coração Imaculado`);
+    changeStream(STREAMS.imaculado);
+}, {
+    scheduled: true,
+    timezone: TZ
+});
+// Agendamento para tocar uma mensagem aleatória a cada 15 minutos (exemplo)
+cron.schedule('*/15 * * * *', () => {
     if (messages.length > 0 && !isPlayingMessage) {
         const randomIndex = Math.floor(Math.random() * messages.length);
         const message = messages[randomIndex];
@@ -182,112 +199,83 @@ cron.schedule('*/30 * * * *', () => {
         playMessage(message.url, message.name);
         // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
         setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
-    } else if (isPlayingMessage) {
-        log("CRON: Ignorando agendamento de mensagem, pois uma mensagem já está tocando.");
-    } else {
+    } else if (messages.length === 0) {
         log("CRON: Nenhuma mensagem disponível para tocar.");
+    } else {
+        log("CRON: Mensagem já está tocando, pulando agendamento.");
     }
 }, {
     scheduled: true,
     timezone: TZ
 });
-// ---------------------- ENDPOINT DE STREAM ----------------------
+log(`Agendamentos carregados (timezone fixo BR).`);
+// ---------------------- ENDPOINTS ----------------------
 app.get("/stream", (req, res) => {
-  // Adiciona a resposta ao conjunto de conexões ativas
+  const url = currentStream.url;
   activeStreamResponses.add(res);
   req.on("close", () => {
     activeStreamResponses.delete(res);
   });
   try {
-    const url = currentStream.url;
-    if (url.includes("youtube.com")) {
-      // Lógica para YouTube (FFmpeg)
-      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
-      const audio = ytdl(url, {
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      // Lógica para YouTube (Missa)
+      const videoId = ytdl.getURLVideoID(url);
+      const audioStream = ytdl(videoId, {
         quality: "lowestaudio",
         filter: "audioonly",
-        highWaterMark: 1 << 25, // 32MB buffer para ytdl
       });
-      const ffmpeg = spawn("ffmpeg", [
-        "-i",
-        "pipe:0", // Entrada do pipe
-        "-f",
-        "mp3", // Formato de saída MP3
-        "-ab",
-        "128k", // Bitrate de áudio 128kbps
-        "-ar",
-        "44100", // Sample rate 44.1kHz
-        "-ac",
-        "2", // 2 canais (estéreo)
-        "pipe:1", // Saída para o pipe
-      ]);
-      audio.pipe(ffmpeg.stdin);
-      res.writeHead(200, { "Content-Type": "audio/mpeg" });
-      ffmpeg.stdout.pipe(passthrough).pipe(res); // Pipe através do PassThrough
-      ffmpeg.stderr.on("data", (data) => {
-        log(`FFmpeg stderr: ${data}`);
-      });
-      ffmpeg.on("close", (code) => {
-        if (code !== 0) {
-          log(`FFmpeg exited with code ${code}`);
-        }
-        passthrough.destroy(); // Garante que o passthrough seja fechado
-      });
-      audio.on("error", (e) => {
-        log("Erro ytdl: " + e.message);
-        ffmpeg.kill();
-        passthrough.destroy(e);
-        try {
-          res.status(500).end("Erro ao carregar stream do YouTube.");
-        } catch (err) {}
-      });
-      ffmpeg.on("error", (e) => {
-        log("Erro FFmpeg: " + e.message);
-        passthrough.destroy(e);
-        try {
-          res.status(500).end("Erro ao processar stream do YouTube.");
-        } catch (err) {}
-      });
-      passthrough.on("error", (e) => { // Adicionado tratamento de erro para o passthrough
-        log("Erro passthrough (YouTube): " + e.message);
-        try { res.end(); } catch (err) {}
-      });
-    } else if (url.includes("drive.google.com")) {
-      // Lógica para Google Drive (mensagens) com PassThrough e tratamento de redirecionamento
       const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+      res.writeHead(200, { "Content-Type": "audio/mpeg" });
+      audioStream.pipe(passthrough).pipe(res);
+      audioStream.on("error", (e) => {
+        log("Erro YouTube stream: " + e.message);
+        passthrough.destroy(e);
+      });
+      passthrough.on("error", (e) => {
+          log("Erro passthrough (YouTube): " + e.message);
+          try { res.end(); } catch (err) {}
+      });
+    } else if (url.includes("googleapis.com/drive/v3/files")) { // NOVO: Detecta a nova URL da API do Google Drive
+      // Lógica para Google Drive (mensagens)
+      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
+      const target = new URL(url);
+      const client = target.protocol === "https:" ? https : http;
       let currentUrl = url;
-      const makeRequest = (requestUrl) => {
-        const target = new URL(requestUrl);
-        const client = target.protocol === "https:" ? https : http;
+      const makeRequest = (requestUrl, redirectCount = 0) => {
+        if (redirectCount > 5) { // Limite de redirecionamentos
+          log("Erro Google Drive: Limite de redirecionamentos excedido.");
+          try {
+            res.status(500).end("Erro ao carregar stream do Google Drive: Limite de redirecionamentos excedido.");
+          } catch (err) {}
+          return;
+        }
         const driveReq = client.request(
           {
-            hostname: target.hostname,
-            port: target.port || (target.protocol === "https:" ? 443 : 80),
-            path: target.pathname + target.search,
+            hostname: new URL(requestUrl).hostname,
+            port: new URL(requestUrl).port || (new URL(requestUrl).protocol === "https:" ? 443 : 80),
+            path: new URL(requestUrl).pathname + new URL(requestUrl).search,
             method: "GET",
             headers: {
               "User-Agent": "Mozilla/5.0",
+              "Authorization": `Bearer ${authenticateDrive()._cachedAuth.credentials.access_token}`, // NOVO: Adiciona token de autorização
             },
           },
           (driveRes) => {
             if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
-              // Segue redirecionamento
-              log(`Redirecionamento do Google Drive (${driveRes.statusCode}) para: ${driveRes.headers.location}`);
-              makeRequest(driveRes.headers.location);
+              // Lidar com redirecionamento
+              log(`Google Drive redirecionando para: ${driveRes.headers.location}`);
+              makeRequest(driveRes.headers.location, redirectCount + 1);
             } else if (driveRes.statusCode === 200) {
-              // Resposta final, começa a streamar
-              // Limpa e define headers específicos para áudio
+              // Stream OK
               const headersToSend = {
-                  "Content-Type": "audio/mpeg", // Força o Content-Type para MP3
-                  "Cache-Control": "no-cache, no-store, must-revalidate",
-                  "Pragma": "no-cache",
-                  "Expires": "0",
+                  "Content-Type": "audio/mpeg", // Força Content-Type para áudio
+                  "Accept-Ranges": "bytes", // Adiciona Accept-Ranges para permitir seek
               };
-              // Copia headers relevantes do Google Drive, exceto os que queremos sobrescrever ou remover
+              // Copia outros headers relevantes, mas remove os problemáticos
               Object.keys(driveRes.headers).forEach(key => {
                   const lowerKey = key.toLowerCase();
                   if (lowerKey !== 'transfer-encoding' &&
-                      lowerKey !== 'content-type' && // Vamos forçar o nosso
+                      lowerKey !== 'content-type' && // Não copia, pois estamos forçando o nosso
                       lowerKey !== 'content-disposition' && // Remove para evitar download
                       lowerKey !== 'cache-control' &&
                       lowerKey !== 'pragma' &&
