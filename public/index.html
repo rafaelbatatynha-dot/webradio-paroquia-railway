@@ -105,6 +105,14 @@
             border-top: 1px solid #eee;
             padding-top: 30px;
         }
+        #manual-play-message-button { /* NOVO ESTILO PARA O BOTÃO MANUAL DE MENSAGEM */
+            background-color: #dc3545; /* Vermelho para indicar ação manual */
+            margin-top: 10px;
+            display: none; /* Escondido por padrão */
+        }
+        #manual-play-message-button.active {
+            display: block;
+        }
         /* Responsividade básica */
         @media (max-width: 480px) {
             .container {
@@ -139,6 +147,7 @@
 
         <div class="message-status" id="message-status"></div>
         <div class="loading-indicator" id="loading-indicator">Carregando stream...</div>
+        <button id="manual-play-message-button">Clique para tocar a mensagem</button> <!-- NOVO BOTÃO -->
 
         <div class="test-streams-section">
             <h2>Controle de Programação</h2>
@@ -147,7 +156,7 @@
                 <button id="test-maraba-button">Rádio Marabá</button>
                 <button id="test-classica-button">Música Clássica</button>
                 <button id="test-missa-youtube-button">Missa Sábado (YouTube)</button>
-                <button id="play-random-message-button">Tocar Mensagem (Aleatória)</button> <!-- NOVO BOTÃO -->
+                <button id="play-random-message-button">Tocar Mensagem (Aleatória)</button>
                 <button id="return-to-imaculado-button">Voltar para Voz do Coração Imaculado</button>
             </div>
         </div>
@@ -160,6 +169,7 @@
         const currentStreamInfo = document.getElementById('current-stream-info');
         const messageStatus = document.getElementById('message-status');
         const loadingIndicator = document.getElementById('loading-indicator');
+        const manualPlayMessageButton = document.getElementById('manual-play-message-button'); // NOVO
 
         const playMainButton = document.getElementById('play-main-button');
         const pauseMainButton = document.getElementById('pause-main-button');
@@ -169,10 +179,11 @@
         const testMarabaButton = document.getElementById('test-maraba-button');
         const testClassicaButton = document.getElementById('test-classica-button');
         const testMissaYoutubeButton = document.getElementById('test-missa-youtube-button');
-        const playRandomMessageButton = document.getElementById('play-random-message-button'); // NOVO
+        const playRandomMessageButton = document.getElementById('play-random-message-button');
         const returnToImaculadoButton = document.getElementById('return-to-imaculado-button');
 
         let currentStreamDescription = "Voz do Coração Imaculado"; // Valor inicial
+        let lastMessageUrl = ''; // Armazena a URL da última mensagem tentada
 
         function updateButtonStates(isPlaying) {
             playMainButton.disabled = isPlaying;
@@ -182,15 +193,17 @@
             testMarabaButton.disabled = false;
             testClassicaButton.disabled = false;
             testMissaYoutubeButton.disabled = false;
-            playRandomMessageButton.disabled = false; // NOVO
+            playRandomMessageButton.disabled = false;
             returnToImaculadoButton.disabled = false;
         }
 
         function startStream(url, description) {
-            if (audioPlayer.src === url && !audioPlayer.paused) {
+            // Se a URL for a mesma e já estiver tocando, não faz nada
+            if (audioPlayer.src === url && !audioPlayer.paused && audioPlayer.readyState >= 3) {
                 console.log(`Stream ${description} já está tocando.`);
                 currentStreamInfo.textContent = `Reproduzindo: ${description}`;
                 loadingIndicator.classList.remove('active');
+                manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
                 updateButtonStates(true);
                 return;
             }
@@ -198,28 +211,54 @@
             console.log(`Iniciando stream: ${description} (${url})`);
             currentStreamInfo.textContent = `Carregando: ${description}...`;
             loadingIndicator.classList.add('active');
+            manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
             updateButtonStates(false); // Desabilita enquanto carrega
 
             audioPlayer.src = url;
             audioPlayer.load(); // Recarrega o player
-            audioPlayer.play().then(() => {
-                currentStreamDescription = description; // Atualiza a descrição global
+
+            const playPromise = audioPlayer.play();
+
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    // Autoplay funcionou
+                    currentStreamDescription = description; // Atualiza a descrição global
+                    currentStreamInfo.textContent = `Reproduzindo: ${description}`;
+                    loadingIndicator.classList.remove('active');
+                    manualPlayMessageButton.classList.remove('active');
+                    updateButtonStates(true);
+                }).catch(error => {
+                    // Autoplay foi bloqueado
+                    console.error("Erro ao tentar tocar stream (autoplay bloqueado?):", error);
+                    currentStreamInfo.textContent = `Erro ao carregar: ${description}.`;
+                    loadingIndicator.classList.remove('active');
+                    updateButtonStates(false);
+
+                    if (error.name === "NotAllowedError" || error.name === "AbortError") {
+                        // Navegador bloqueou autoplay. Oferece botão manual.
+                        messageStatus.textContent = `Reprodução automática bloqueada. Clique para tocar "${description}".`;
+                        manualPlayMessageButton.textContent = `Clique para tocar "${description}"`;
+                        manualPlayMessageButton.classList.add('active');
+                        lastMessageUrl = url; // Armazena a URL para o botão manual
+                    } else {
+                        // Outro erro de reprodução
+                        messageStatus.textContent = `Erro de reprodução: ${description}. Tente novamente.`;
+                        // Tenta tocar novamente após um pequeno atraso em caso de erro
+                        setTimeout(() => startStream(url, description), 3000);
+                    }
+                });
+            } else {
+                // Navegadores mais antigos que não retornam Promise
+                currentStreamDescription = description;
                 currentStreamInfo.textContent = `Reproduzindo: ${description}`;
                 loadingIndicator.classList.remove('active');
+                manualPlayMessageButton.classList.remove('active');
                 updateButtonStates(true);
-            }).catch(error => {
-                console.error("Erro ao tocar stream:", error);
-                currentStreamInfo.textContent = `Erro ao carregar: ${description}. Tentando novamente...`;
-                loadingIndicator.classList.remove('active');
-                updateButtonStates(false);
-                // Tenta tocar novamente após um pequeno atraso em caso de erro
-                setTimeout(() => startStream(url, description), 3000);
-            });
+            }
         }
 
         // Event Listeners para os botões principais
         playMainButton.addEventListener('click', () => {
-            // Ao clicar em tocar, sempre tenta o stream principal (/stream)
             socket.emit('return-to-imaculado'); // Garante que o servidor volte para o principal
         });
         pauseMainButton.addEventListener('click', () => {
@@ -231,13 +270,14 @@
             audioPlayer.src = ''; // Limpa a fonte
             currentStreamInfo.textContent = "Rádio Parada.";
             updateButtonStates(false);
+            manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
         });
         forceReconnectButton.addEventListener('click', () => {
             console.log("Forçando reconexão via Socket.IO...");
             socket.emit('force-reconnect'); // Envia comando para o servidor
-            // O servidor responderá com 'play-stream' que irá reiniciar o player
             currentStreamInfo.textContent = `Forçando reconexão...`;
             loadingIndicator.classList.add('active');
+            manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
             updateButtonStates(false);
         });
 
@@ -251,17 +291,33 @@
         testMissaYoutubeButton.addEventListener('click', () => {
             socket.emit('change-stream', 'missaYoutube');
         });
-        playRandomMessageButton.addEventListener('click', () => { // NOVO
+        playRandomMessageButton.addEventListener('click', () => {
             socket.emit('play-random-message');
         });
         returnToImaculadoButton.addEventListener('click', () => {
             socket.emit('return-to-imaculado');
         });
 
+        // NOVO: Listener para o botão manual de play da mensagem
+        manualPlayMessageButton.addEventListener('click', () => {
+            if (lastMessageUrl) {
+                audioPlayer.src = lastMessageUrl;
+                audioPlayer.load();
+                audioPlayer.play().then(() => {
+                    console.log("Mensagem tocada manualmente.");
+                    manualPlayMessageButton.classList.remove('active');
+                    messageStatus.textContent = ''; // Limpa a mensagem de autoplay
+                    updateButtonStates(true);
+                }).catch(error => {
+                    console.error("Erro ao tocar mensagem manualmente:", error);
+                    messageStatus.textContent = `Erro ao tocar mensagem manualmente: ${error.message}`;
+                });
+            }
+        });
+
         // Socket.IO Listeners
         socket.on('connect', () => {
             console.log('Conectado ao servidor Socket.IO');
-            // Ao reconectar, o servidor já envia o stream atual
         });
 
         socket.on('play-stream', (data) => {
@@ -271,44 +327,28 @@
 
         socket.on('play-message', (data) => {
             console.log('Recebido comando play-message:', data);
-            messageStatus.textContent = `Tocando mensagem: ${data.description}`;
+            messageStatus.textContent = `Preparando mensagem: ${data.description}`;
             messageStatus.classList.add('playing');
-            // Pausa o stream principal e toca a mensagem
-            audioPlayer.pause();
-            audioPlayer.src = data.url;
-            audioPlayer.load();
-            audioPlayer.play().then(() => {
-                currentStreamDescription = data.description; // Atualiza a descrição global
-                currentStreamInfo.textContent = `Reproduzindo: ${data.description}`;
-                loadingIndicator.classList.remove('active');
-                updateButtonStates(true);
-            }).catch(error => {
-                console.error("Erro ao tocar mensagem:", error);
-                currentStreamInfo.textContent = `Erro ao tocar mensagem: ${data.description}`;
-                loadingIndicator.classList.remove('active');
-                updateButtonStates(false);
-            });
+            startStream(data.url, data.description); // Usa a mesma função para tentar autoplay
         });
 
         socket.on('stop-message', () => {
             console.log('Recebido comando stop-message');
             messageStatus.textContent = '';
             messageStatus.classList.remove('playing');
-            // O servidor já deve ter trocado o currentStream de volta,
-            // então ele emitirá um 'play-stream' logo em seguida.
+            manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
         });
 
         socket.on('disconnect', () => {
             console.log('Desconectado do servidor Socket.IO');
             currentStreamInfo.textContent = "Desconectado do servidor. Tentando reconectar...";
             loadingIndicator.classList.remove('active');
+            manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
             updateButtonStates(false);
         });
 
-        // Inicialização: Tenta tocar o stream principal automaticamente ao carregar
-        // O servidor enviará o 'play-stream' ao conectar, então não precisamos de um play inicial aqui.
-        // Apenas atualiza o estado dos botões.
-        updateButtonStates(false); // Começa com botões de play habilitados
+        // Inicialização
+        updateButtonStates(false);
         currentStreamInfo.textContent = "Aguardando conexão com a rádio...";
 
     </script>

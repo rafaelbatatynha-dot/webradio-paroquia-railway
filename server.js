@@ -1,8 +1,8 @@
 // server.js – Web Rádio Paróquia (CORRIGIDO: troca real de stream + TZ explícito + reconexão via cliente)
 
 const express = require("express");
-const http = require("http");
-const https = require("https");
+const http = require("http"); // Usar http para o servidor principal
+const https = require("https"); // Usar https para requisições externas (Google Drive, streams)
 const socketIo = require("socket.io");
 const cors = require("cors");
 const cron = require("node-cron");
@@ -47,11 +47,14 @@ let isPlayingMessage = false;
 let blockRunning = false; // Bloqueia a execução de múltiplos blocos de programação
 // Conexões ativas do endpoint /stream (PONTO-CHAVE para trocar programação)
 const activeStreamResponses = new Set();
+// Cache para mensagens do Google Drive
+const messageCache = new Map(); // Map<fileId, { buffer: Buffer, contentType: string, contentLength: number }>
 // ---------------------- LOG ----------------------
 function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 // ---------------------- GOOGLE DRIVE ----------------------
+let driveAuth = null; // Variável para armazenar a autenticação do Drive
 async function authenticateDrive() {
   try {
     const json = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
@@ -71,18 +74,20 @@ async function authenticateDrive() {
 async function loadMessages(auth) {
   try {
     if (!auth) return;
+    driveAuth = auth; // Armazena a autenticação para uso posterior
     const drive = google.drive({ version: "v3", auth });
     const resp = await drive.files.list({
       q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio'`,
-      fields: "files(id,name,webContentLink)", // NOVO: Pedir webContentLink
+      fields: "files(id,name,mimeType)", // Pedir mimeType
       pageSize: 500,
     });
     const files = resp.data.files || [];
     messages = files.map((f) => ({
       id: f.id,
       name: f.name,
-      // NOVO: Usar a API de exportação de mídia diretamente
-      url: `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,
+      // A URL agora aponta para um endpoint interno que servirá o buffer
+      url: `/message-stream/${f.id}`,
+      mimeType: f.mimeType || 'audio/mpeg', // Garante um mimeType padrão
     }));
     log(`Mensagens carregadas: ${messages.length}`);
   } catch (err) {
@@ -94,9 +99,9 @@ async function startDrive() {
   log("Iniciando carregamento de mensagens do Google Drive...");
   const auth = await authenticateDrive();
   await loadMessages(auth);
-  setInterval(() => loadMessages(auth), 30 * 60 * 1000); // 30 min
+  setInterval(() => loadMessages(auth), 30 * 60 * 1000); // Recarrega a cada 30 min
 }
-// ---------------------- TROCA DE STREAM (ESSENCIAL) ----------------------
+// ---------------------- FUNÇÕES DE STREAM ----------------------
 function killActiveStreams() {
   // Derruba conexões antigas do /stream para forçar o player reconectar
   for (const res of activeStreamResponses) {
@@ -106,217 +111,166 @@ function killActiveStreams() {
   }
   activeStreamResponses.clear();
 }
-function resumeStream() {
+function changeStream(newStream) {
+  if (currentStream.url === newStream.url && !isPlayingMessage) {
+    log(`Stream já é ${newStream.description}. Nenhuma mudança necessária.`);
+    return;
+  }
+  previousStream = currentStream; // Salva o stream atual como anterior
+  currentStream = newStream;
+  log(`Trocando stream para: ${currentStream.description}`);
   // Troca REAL: mata streams ativos e manda o cliente reconectar
   killActiveStreams();
   io.emit("play-stream", {
     url: "/stream",
     description: currentStream.description,
   });
-  log(`Retomando stream principal: ${currentStream.description}`);
 }
-function playMessage(messageUrl, messageName) {
-  previousStream = currentStream; // Salva o stream atual antes de tocar a mensagem
+function playMessage(messageUrlOrId, messageName) {
+  if (isPlayingMessage) {
+    log("Já está tocando uma mensagem. Ignorando novo comando.");
+    return;
+  }
   isPlayingMessage = true;
-  io.emit("play-message", { url: messageUrl, description: messageName });
-  log(`Tocando mensagem: ${messageName}`);
+  log(`Iniciando reprodução de mensagem: ${messageName}`);
+  // Salva o stream atual para retornar a ele depois
+  previousStream = currentStream;
+  // Troca REAL: mata streams ativos e manda o cliente tocar a mensagem
+  killActiveStreams();
+  io.emit("play-message", {
+    url: messageUrlOrId, // Pode ser a URL direta ou o ID para o endpoint interno
+    description: messageName,
+  });
 }
 function stopMessageAndResumePrevious() {
+  if (!isPlayingMessage) return;
   isPlayingMessage = false;
-  io.emit("stop-message"); // Informa clientes que a mensagem parou
-  currentStream = previousStream; // Volta para o stream que estava tocando antes da mensagem
-  resumeStream(); // Retoma o stream principal
-  log(`Mensagem finalizada. Retomando stream: ${currentStream.description}`);
-}
-// Função para mudar o stream principal (usada por agendamentos e override manual)
-function changeStream(newStream) {
-    if (currentStream.url === newStream.url) {
-        log(`Stream já é ${newStream.description}. Nenhuma mudança necessária.`);
-        return;
-    }
-    currentStream = newStream;
-    resumeStream(); // Força a troca para o novo stream
-}
-// ---------------------- CRON JOBS (AGENDAMENTOS) ----------------------
-// Função para obter a data e hora atual no fuso horário do servidor
-function getServerTimeInTZ() {
-    return new Date().toLocaleString("en-US", { timeZone: TZ });
-}
-// CRON TESTE: Dispara a cada minuto para verificar se o cron está ativo
-cron.schedule('* * * * *', () => {
-    const serverTime = new Date();
-    log(`CRON TESTE: Disparado a cada minuto. UTC: ${serverTime.toISOString()} | BR: ${serverTime.toLocaleString('pt-BR', { timeZone: TZ })}`);
-}, {
-    scheduled: true,
-    timezone: TZ // Garante que o cron use o fuso horário correto para agendamento
-});
-// Exemplo de agendamento: Rádio Marabá às 00:10 BR (03:10 UTC)
-cron.schedule('10 0 * * *', () => { // 10 minutos depois da meia-noite (00:10)
-    log(`CRON: 00:10 BR – Iniciando Rádio Marabá`);
-    changeStream(STREAMS.maraba);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-// Exemplo de agendamento: Música Clássica às 01:00 BR (04:00 UTC)
-cron.schedule('0 1 * * *', () => { // 1 hora da manhã (01:00)
-    log(`CRON: 01:00 BR – Iniciando Música Clássica`);
-    changeStream(STREAMS.classica);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-// Exemplo de agendamento: Missa de Sábado (YouTube) às 19:00 BR (22:00 UTC)
-cron.schedule('0 19 * * 6', () => { // Sábado às 19:00
-    log(`CRON: Sábado 19:00 BR – Iniciando Missa de Sábado (YouTube)`);
-    changeStream(STREAMS.missaYoutube);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-// Exemplo de agendamento: Retorno à Voz do Coração Imaculado às 02:00 BR (05:00 UTC)
-cron.schedule('0 2 * * *', () => { // 2 horas da manhã (02:00)
-    log(`CRON: 02:00 BR – Retornando à Voz do Coração Imaculado`);
-    changeStream(STREAMS.imaculado);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-// Exemplo de agendamento: Retorno à Voz do Coração Imaculado às 20:00 BR (23:00 UTC) no sábado
-cron.schedule('0 20 * * 6', () => { // Sábado às 20:00
-    log(`CRON: Sábado 20:00 BR – Retornando à Voz do Coração Imaculado`);
-    changeStream(STREAMS.imaculado);
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-// Agendamento para tocar uma mensagem aleatória a cada 15 minutos (exemplo)
-cron.schedule('*/15 * * * *', () => {
-    if (messages.length > 0 && !isPlayingMessage) {
-        const randomIndex = Math.floor(Math.random() * messages.length);
-        const message = messages[randomIndex];
-        log(`CRON: Tocando mensagem agendada: ${message.name}`);
-        playMessage(message.url, message.name);
-        // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
-        setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
-    } else if (messages.length === 0) {
-        log("CRON: Nenhuma mensagem disponível para tocar.");
-    } else {
-        log("CRON: Mensagem já está tocando, pulando agendamento.");
-    }
-}, {
-    scheduled: true,
-    timezone: TZ
-});
-log(`Agendamentos carregados (timezone fixo BR).`);
-// ---------------------- ENDPOINTS ----------------------
-app.get("/stream", (req, res) => {
-  const url = currentStream.url;
-  activeStreamResponses.add(res);
-  req.on("close", () => {
-    activeStreamResponses.delete(res);
+  log(`Mensagem finalizada. Retomando stream: ${previousStream.description}`);
+  // Retoma o stream anterior
+  currentStream = previousStream; // Garante que currentStream seja o anterior
+  killActiveStreams();
+  io.emit("play-stream", {
+    url: "/stream",
+    description: currentStream.description,
   });
+  io.emit("stop-message"); // Notifica o cliente que a mensagem parou
+}
+// ---------------------- AGENDAMENTO (CRON) ----------------------
+// Teste de CRON a cada minuto (apenas para depuração)
+cron.schedule("* * * * *", () => {
+  const now = new Date();
+  log(`CRON TESTE: Disparado a cada minuto. UTC: ${now.toISOString()} | BR: ${now.toLocaleString("pt-BR", { timeZone: TZ })}`);
+}, { scheduled: true, timezone: TZ });
+
+// Exemplo de agendamento: Rádio Imaculado das 6h às 19h
+cron.schedule("0 6 * * *", () => changeStream(STREAMS.imaculado), { scheduled: true, timezone: TZ });
+cron.schedule("0 19 * * *", () => changeStream(STREAMS.maraba), { scheduled: true, timezone: TZ });
+
+// Exemplo de agendamento: Missa de Sábado às 19h
+cron.schedule("0 19 * * 6", () => changeStream(STREAMS.missaYoutube), { scheduled: true, timezone: TZ });
+cron.schedule("30 20 * * 6", () => changeStream(STREAMS.maraba), { scheduled: true, timezone: TZ }); // Volta para Marabá 20:30
+
+// Exemplo de agendamento: Missa de Domingo às 9h
+cron.schedule("0 9 * * 0", () => changeStream(STREAMS.missaYoutube), { scheduled: true, timezone: TZ });
+cron.schedule("30 10 * * 0", () => changeStream(STREAMS.maraba), { scheduled: true, timezone: TZ }); // Volta para Marabá 10:30
+
+// ---------------------- ENDPOINTS HTTP ----------------------
+
+// Novo endpoint para servir mensagens do Google Drive a partir do buffer
+app.get("/message-stream/:fileId", async (req, res) => {
+  const fileId = req.params.fileId;
+  log(`Requisição para /message-stream/${fileId}`);
+
+  if (!driveAuth) {
+    log("Erro: Google Drive não autenticado.");
+    return res.status(500).send("Serviço de Drive não disponível.");
+  }
+
+  // Tenta servir do cache primeiro
+  if (messageCache.has(fileId)) {
+    const cached = messageCache.get(fileId);
+    log(`Servindo mensagem ${fileId} do cache.`);
+    res.writeHead(200, {
+      "Content-Type": cached.contentType,
+      "Content-Length": cached.contentLength,
+      "Cache-Control": "public, max-age=3600", // Cache por 1 hora
+    });
+    return res.end(cached.buffer);
+  }
+
+  // Se não estiver no cache, baixa do Google Drive
   try {
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      // Lógica para YouTube (Missa)
+    const drive = google.drive({ version: "v3", auth: driveAuth });
+    const response = await drive.files.get(
+      { fileId: fileId, alt: "media" },
+      { responseType: "stream" }
+    );
+
+    const chunks = [];
+    let contentLength = 0;
+    let contentType = 'audio/mpeg'; // Padrão
+
+    response.data.on('data', chunk => {
+      chunks.push(chunk);
+      contentLength += chunk.length;
+    });
+
+    response.data.on('end', () => {
+      const buffer = Buffer.concat(chunks);
+      // Tenta obter o Content-Type da resposta do Drive, se disponível
+      if (response.headers && response.headers['content-type']) {
+          contentType = response.headers['content-type'];
+      }
+
+      // Armazena no cache
+      messageCache.set(fileId, { buffer, contentType, contentLength });
+      log(`Mensagem ${fileId} baixada e armazenada em cache. Tamanho: ${contentLength} bytes.`);
+
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Content-Length": contentLength,
+        "Cache-Control": "public, max-age=3600", // Cache por 1 hora
+      });
+      res.end(buffer);
+    });
+
+    response.data.on('error', (err) => {
+      log(`Erro ao baixar mensagem ${fileId} do Google Drive: ${err.message}`);
+      res.status(500).send("Erro ao carregar mensagem.");
+    });
+
+  } catch (err) {
+    log(`Erro geral ao servir /message-stream/${fileId}: ${err.message}`);
+    res.status(500).send("Erro ao carregar mensagem.");
+  }
+});
+
+
+// Endpoint principal para streaming de rádio
+app.get("/stream", async (req, res) => {
+  activeStreamResponses.add(res);
+  res.on("close", () => activeStreamResponses.delete(res));
+
+  try {
+    const url = currentStream.url;
+
+    // Se for YouTube, usa ytdl-core
+    if (url.includes("youtube.com")) {
       const videoId = ytdl.getURLVideoID(url);
-      const audioStream = ytdl(videoId, {
-        quality: "lowestaudio",
+      const youtubeStream = ytdl(videoId, {
+        quality: "highestaudio",
         filter: "audioonly",
       });
-      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
-      res.writeHead(200, { "Content-Type": "audio/mpeg" });
-      audioStream.pipe(passthrough).pipe(res);
-      audioStream.on("error", (e) => {
-        log("Erro YouTube stream: " + e.message);
-        passthrough.destroy(e);
-      });
-      passthrough.on("error", (e) => {
-          log("Erro passthrough (YouTube): " + e.message);
-          try { res.end(); } catch (err) {}
-      });
-    } else if (url.includes("googleapis.com/drive/v3/files")) { // NOVO: Detecta a nova URL da API do Google Drive
-      // Lógica para Google Drive (mensagens)
-      const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
-      const target = new URL(url);
-      const client = target.protocol === "https:" ? https : http;
-      let currentUrl = url;
-      const makeRequest = (requestUrl, redirectCount = 0) => {
-        if (redirectCount > 5) { // Limite de redirecionamentos
-          log("Erro Google Drive: Limite de redirecionamentos excedido.");
-          try {
-            res.status(500).end("Erro ao carregar stream do Google Drive: Limite de redirecionamentos excedido.");
-          } catch (err) {}
-          return;
-        }
-        const driveReq = client.request(
-          {
-            hostname: new URL(requestUrl).hostname,
-            port: new URL(requestUrl).port || (new URL(requestUrl).protocol === "https:" ? 443 : 80),
-            path: new URL(requestUrl).pathname + new URL(requestUrl).search,
-            method: "GET",
-            headers: {
-              "User-Agent": "Mozilla/5.0",
-              "Authorization": `Bearer ${authenticateDrive()._cachedAuth.credentials.access_token}`, // NOVO: Adiciona token de autorização
-            },
-          },
-          (driveRes) => {
-            if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
-              // Lidar com redirecionamento
-              log(`Google Drive redirecionando para: ${driveRes.headers.location}`);
-              makeRequest(driveRes.headers.location, redirectCount + 1);
-            } else if (driveRes.statusCode === 200) {
-              // Stream OK
-              const headersToSend = {
-                  "Content-Type": "audio/mpeg", // Força Content-Type para áudio
-                  "Accept-Ranges": "bytes", // Adiciona Accept-Ranges para permitir seek
-              };
-              // Copia outros headers relevantes, mas remove os problemáticos
-              Object.keys(driveRes.headers).forEach(key => {
-                  const lowerKey = key.toLowerCase();
-                  if (lowerKey !== 'transfer-encoding' &&
-                      lowerKey !== 'content-type' && // Não copia, pois estamos forçando o nosso
-                      lowerKey !== 'content-disposition' && // Remove para evitar download
-                      lowerKey !== 'cache-control' &&
-                      lowerKey !== 'pragma' &&
-                      lowerKey !== 'expires' &&
-                      lowerKey !== 'set-cookie') { // Remove cookies se houver
-                      headersToSend[key] = driveRes.headers[key];
-                  }
-              });
-              res.writeHead(200, headersToSend);
-              driveRes.pipe(passthrough).pipe(res);
 
-              driveRes.on("error", (e) => {
-                log("Erro driveRes (Google Drive upstream): " + e.message);
-                passthrough.destroy(e);
-              });
-              passthrough.on("error", (e) => {
-                  log("Erro passthrough (Google Drive): " + e.message);
-                  try { res.end(); } catch (err) {}
-              });
-              driveRes.on("close", () => {
-                  log("Stream Google Drive upstream fechado.");
-              });
-            } else {
-              log(`Erro Google Drive: Status ${driveRes.statusCode}`);
-              try {
-                res.status(500).end(`Erro ao carregar stream do Google Drive: Status ${driveRes.statusCode}`);
-              } catch (err) {}
-            }
-          }
-        );
-        driveReq.on("error", (e) => {
-          log("Erro Google Drive stream (driveReq): " + e.message);
-          try {
-            res.status(500).end("Erro ao carregar stream do Google Drive.");
-          } catch (err) {}
-        });
-        driveReq.end();
-      };
-      makeRequest(currentUrl); // Inicia a requisição
+      res.writeHead(200, { "Content-Type": "audio/mpeg" });
+      youtubeStream.pipe(res);
+
+      youtubeStream.on("error", (e) => {
+        log("Erro YouTube stream: " + e.message);
+        res.status(500).send("Erro ao carregar stream do YouTube.");
+      });
     } else {
-      // Proxy normal (http/https)
+      // Para streams diretos (Marabá, Imaculado, Clássica)
       const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
       const target = new URL(url);
       const client = target.protocol === "https:" ? https : http;
@@ -330,8 +284,6 @@ app.get("/stream", (req, res) => {
           method: "GET",
           headers: {
             "User-Agent": "Mozilla/5.0",
-            // "Icy-MetaData": "1", // REMOVIDO PARA TESTE
-            // Connection: "keep-alive", // REMOVIDO PARA TESTE
           },
         },
         (streamRes) => {
@@ -414,7 +366,8 @@ io.on("connection", (socket) => {
           const randomIndex = Math.floor(Math.random() * messages.length);
           const message = messages[randomIndex];
           log(`Recebido comando para tocar mensagem aleatória: ${message.name} via Socket.IO.`);
-          playMessage(message.url, message.name);
+          // A URL agora é o endpoint interno do servidor
+          playMessage(`/message-stream/${message.id}`, message.name);
           // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
           setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
       } else {
