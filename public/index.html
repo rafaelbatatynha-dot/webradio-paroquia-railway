@@ -146,18 +146,17 @@
         </div>
 
         <div class="message-status" id="message-status"></div>
-        <div class="loading-indicator" id="loading-indicator">Carregando stream...</div>
-        <button id="manual-play-message-button">Clique para tocar a mensagem</button> <!-- NOVO BOTÃO -->
+        <div class="loading-indicator" id="loading-indicator">Carregando...</div>
+        <button id="manual-play-message-button">Clique para tocar a mensagem</button> <!-- Botão manual -->
 
         <div class="test-streams-section">
-            <h2>Controle de Programação</h2>
-            <p>Ative um stream manualmente ou retorne à programação automática.</p>
+            <h2>Controles de Teste / Mensagens</h2>
             <div class="button-group">
                 <button id="test-maraba-button">Rádio Marabá</button>
                 <button id="test-classica-button">Música Clássica</button>
-                <button id="test-missa-youtube-button">Missa Sábado (YouTube)</button>
+                <button id="test-missa-youtube-button">Missa YouTube</button>
                 <button id="play-random-message-button">Tocar Mensagem (Aleatória)</button>
-                <button id="return-to-imaculado-button">Voltar para Voz do Coração Imaculado</button>
+                <button id="return-to-imaculado-button">Voltar p/ Voz do Coração Imaculado</button>
             </div>
         </div>
     </div>
@@ -169,7 +168,7 @@
         const currentStreamInfo = document.getElementById('current-stream-info');
         const messageStatus = document.getElementById('message-status');
         const loadingIndicator = document.getElementById('loading-indicator');
-        const manualPlayMessageButton = document.getElementById('manual-play-message-button'); // NOVO
+        const manualPlayMessageButton = document.getElementById('manual-play-message-button');
 
         const playMainButton = document.getElementById('play-main-button');
         const pauseMainButton = document.getElementById('pause-main-button');
@@ -182,41 +181,30 @@
         const playRandomMessageButton = document.getElementById('play-random-message-button');
         const returnToImaculadoButton = document.getElementById('return-to-imaculado-button');
 
-        let currentStreamDescription = "Voz do Coração Imaculado"; // Valor inicial
-        let lastMessageUrl = ''; // Armazena a URL da última mensagem tentada
+        let currentStreamDescription = "";
+        let lastMessageUrl = ""; // Armazena a URL da última mensagem para o botão manual
+        let isPlayingGoogleDriveMessage = false; // NOVO: Flag para saber se é uma mensagem do Drive
 
         function updateButtonStates(isPlaying) {
             playMainButton.disabled = isPlaying;
             pauseMainButton.disabled = !isPlaying;
             stopMainButton.disabled = !isPlaying;
-            // Os botões de teste e retorno sempre ficam ativos para permitir override
-            testMarabaButton.disabled = false;
-            testClassicaButton.disabled = false;
-            testMissaYoutubeButton.disabled = false;
-            playRandomMessageButton.disabled = false;
-            returnToImaculadoButton.disabled = false;
+            // Os botões de teste e mensagem podem ser sempre clicáveis, mas talvez desabilitados durante o loading
         }
 
         function startStream(url, description) {
-            // Se a URL for a mesma e já estiver tocando, não faz nada
-            if (audioPlayer.src === url && !audioPlayer.paused && audioPlayer.readyState >= 3) {
-                console.log(`Stream ${description} já está tocando.`);
-                currentStreamInfo.textContent = `Reproduzindo: ${description}`;
-                loadingIndicator.classList.remove('active');
-                manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
-                updateButtonStates(true);
-                return;
-            }
-
-            console.log(`Iniciando stream: ${description} (${url})`);
+            console.log(`Tentando iniciar stream: ${description} (${url})`);
             currentStreamInfo.textContent = `Carregando: ${description}...`;
             loadingIndicator.classList.add('active');
             manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
-            updateButtonStates(false); // Desabilita enquanto carrega
+
+            // NOVO: Verifica se a URL é de uma mensagem do Google Drive
+            isPlayingGoogleDriveMessage = url.startsWith('/message-stream/');
 
             audioPlayer.src = url;
-            audioPlayer.load(); // Recarrega o player
+            audioPlayer.load(); // Carrega o novo stream
 
+            // Tenta tocar e lida com a Promise retornada pelo play()
             const playPromise = audioPlayer.play();
 
             if (playPromise !== undefined) {
@@ -271,6 +259,7 @@
             currentStreamInfo.textContent = "Rádio Parada.";
             updateButtonStates(false);
             manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
+            isPlayingGoogleDriveMessage = false; // Reseta a flag
         });
         forceReconnectButton.addEventListener('click', () => {
             console.log("Forçando reconexão via Socket.IO...");
@@ -279,6 +268,7 @@
             loadingIndicator.classList.add('active');
             manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
             updateButtonStates(false);
+            isPlayingGoogleDriveMessage = false; // Reseta a flag
         });
 
         // Event Listeners para os botões de teste / override
@@ -308,10 +298,21 @@
                     manualPlayMessageButton.classList.remove('active');
                     messageStatus.textContent = ''; // Limpa a mensagem de autoplay
                     updateButtonStates(true);
+                    isPlayingGoogleDriveMessage = lastMessageUrl.startsWith('/message-stream/'); // Define a flag
                 }).catch(error => {
                     console.error("Erro ao tocar mensagem manualmente:", error);
                     messageStatus.textContent = `Erro ao tocar mensagem manualmente: ${error.message}`;
                 });
+            }
+        });
+
+        // NOVO: Listener para o evento 'ended' do player de áudio
+        audioPlayer.addEventListener('ended', () => {
+            console.log("Evento 'ended' disparado.");
+            if (isPlayingGoogleDriveMessage) {
+                console.log("Mensagem do Google Drive terminou. Sinalizando ao servidor.");
+                socket.emit('message-ended'); // Envia sinal ao servidor
+                isPlayingGoogleDriveMessage = false; // Reseta a flag
             }
         });
 
@@ -337,6 +338,7 @@
             messageStatus.textContent = '';
             messageStatus.classList.remove('playing');
             manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
+            isPlayingGoogleDriveMessage = false; // Reseta a flag
         });
 
         socket.on('disconnect', () => {
@@ -345,6 +347,7 @@
             loadingIndicator.classList.remove('active');
             manualPlayMessageButton.classList.remove('active'); // Esconde o botão manual
             updateButtonStates(false);
+            isPlayingGoogleDriveMessage = false; // Reseta a flag
         });
 
         // Inicialização

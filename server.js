@@ -1,4 +1,4 @@
-// server.js – Web Rádio Paróquia (CORRIGIDO: troca real de stream + TZ explícito + reconexão via cliente)
+// server.js – Web Rádio Paróquia (CORRIGIDO: detecção de fim de mensagem no cliente + TZ explícito + reconexão via cliente)
 
 const express = require("express");
 const http = require("http"); // Usar http para o servidor principal
@@ -141,6 +141,8 @@ function playMessage(messageUrlOrId, messageName) {
     url: messageUrlOrId, // Pode ser a URL direta ou o ID para o endpoint interno
     description: messageName,
   });
+  // >>>>> REMOVIDO: setTimeout fixo para voltar ao stream anterior <<<<<
+  // A lógica de retorno será tratada pelo cliente via evento 'message-ended'
 }
 function stopMessageAndResumePrevious() {
   if (!isPlayingMessage) return;
@@ -174,18 +176,30 @@ cron.schedule("30 20 * * 6", () => changeStream(STREAMS.maraba), { scheduled: tr
 cron.schedule("0 9 * * 0", () => changeStream(STREAMS.missaYoutube), { scheduled: true, timezone: TZ });
 cron.schedule("30 10 * * 0", () => changeStream(STREAMS.maraba), { scheduled: true, timezone: TZ }); // Volta para Marabá 10:30
 
+// Agendamento para tocar uma mensagem aleatória a cada 15 minutos (exemplo)
+cron.schedule('*/15 * * * *', () => {
+    if (messages.length > 0 && !isPlayingMessage) {
+        const randomIndex = Math.floor(Math.random() * messages.length);
+        const message = messages[randomIndex];
+        log(`Agendamento: Tocando mensagem aleatória: ${message.name}.`);
+        playMessage(`/message-stream/${message.id}`, message.name);
+        // >>>>> REMOVIDO: setTimeout fixo aqui também <<<<<
+        // A lógica de retorno será tratada pelo cliente via evento 'message-ended'
+    } else if (messages.length === 0) {
+        log('Agendamento: Nenhuma mensagem disponível para tocar.');
+    } else {
+        log('Agendamento: Mensagem já está tocando, pulando este agendamento.');
+    }
+}, {
+  scheduled: true,
+  timezone: TZ,
+});
+
 // ---------------------- ENDPOINTS HTTP ----------------------
 
 // Novo endpoint para servir mensagens do Google Drive a partir do buffer
 app.get("/message-stream/:fileId", async (req, res) => {
   const fileId = req.params.fileId;
-  log(`Requisição para /message-stream/${fileId}`);
-
-  if (!driveAuth) {
-    log("Erro: Google Drive não autenticado.");
-    return res.status(500).send("Serviço de Drive não disponível.");
-  }
-
   // Tenta servir do cache primeiro
   if (messageCache.has(fileId)) {
     const cached = messageCache.get(fileId);
@@ -200,6 +214,10 @@ app.get("/message-stream/:fileId", async (req, res) => {
 
   // Se não estiver no cache, baixa do Google Drive
   try {
+    if (!driveAuth) {
+      log("Erro: Google Drive não autenticado ao tentar baixar mensagem.");
+      return res.status(500).send("Serviço de mensagens indisponível.");
+    }
     const drive = google.drive({ version: "v3", auth: driveAuth });
     const response = await drive.files.get(
       { fileId: fileId, alt: "media" },
@@ -368,12 +386,16 @@ io.on("connection", (socket) => {
           log(`Recebido comando para tocar mensagem aleatória: ${message.name} via Socket.IO.`);
           // A URL agora é o endpoint interno do servidor
           playMessage(`/message-stream/${message.id}`, message.name);
-          // Agendar para voltar ao stream anterior após um tempo (ex: 30 segundos)
-          setTimeout(stopMessageAndResumePrevious, 30 * 1000); // Ajuste conforme a duração média das mensagens
+          // >>>>> REMOVIDO: setTimeout fixo aqui <<<<<
       } else {
           log("Recebido comando para tocar mensagem aleatória, mas nenhuma mensagem disponível.");
           // Opcional: emitir um evento para o cliente informar que não há mensagens
       }
+  });
+  // NOVO: Listener para quando a mensagem terminar no cliente
+  socket.on('message-ended', () => {
+      log('Recebido evento message-ended do cliente. Finalizando mensagem e retomando stream anterior.');
+      stopMessageAndResumePrevious();
   });
   // Listener para forçar reconexão do player
   socket.on("force-reconnect", () => {
