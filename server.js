@@ -253,37 +253,80 @@ app.get("/stream", (req, res) => {
         try { res.end(); } catch (err) {}
       });
     } else if (url.includes("drive.google.com")) {
-      // Lógica para Google Drive (mensagens) com PassThrough
+      // Lógica para Google Drive (mensagens) com PassThrough e tratamento de redirecionamento
       const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
-      const driveReq = https.request(url, (driveRes) => {
-        // Copia os headers da resposta original para o cliente
-        Object.keys(driveRes.headers).forEach(key => {
-            if (key.toLowerCase() !== 'transfer-encoding') {
-                res.setHeader(key, driveRes.headers[key]);
-            }
-        });
-        res.writeHead(driveRes.statusCode, { "Content-Type": "audio/mpeg" }); // Garante Content-Type correto
-        driveRes.pipe(passthrough).pipe(res); // Pipe através do PassThrough
+      let currentUrl = url;
+      const makeRequest = (requestUrl) => {
+        const target = new URL(requestUrl);
+        const client = target.protocol === "https:" ? https : http;
+        const driveReq = client.request(
+          {
+            hostname: target.hostname,
+            port: target.port || (target.protocol === "https:" ? 443 : 80),
+            path: target.pathname + target.search,
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+            },
+          },
+          (driveRes) => {
+            if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
+              // Segue redirecionamento
+              log(`Redirecionamento do Google Drive (${driveRes.statusCode}) para: ${driveRes.headers.location}`);
+              makeRequest(driveRes.headers.location);
+            } else if (driveRes.statusCode === 200) {
+              // Resposta final, começa a streamar
+              // Limpa e define headers específicos para áudio
+              const headersToSend = {
+                  "Content-Type": "audio/mpeg", // Força o Content-Type para MP3
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  "Pragma": "no-cache",
+                  "Expires": "0",
+              };
+              // Copia headers relevantes do Google Drive, exceto os que queremos sobrescrever ou remover
+              Object.keys(driveRes.headers).forEach(key => {
+                  const lowerKey = key.toLowerCase();
+                  if (lowerKey !== 'transfer-encoding' &&
+                      lowerKey !== 'content-type' && // Vamos forçar o nosso
+                      lowerKey !== 'content-disposition' && // Remove para evitar download
+                      lowerKey !== 'cache-control' &&
+                      lowerKey !== 'pragma' &&
+                      lowerKey !== 'expires' &&
+                      lowerKey !== 'set-cookie') { // Remove cookies se houver
+                      headersToSend[key] = driveRes.headers[key];
+                  }
+              });
+              res.writeHead(200, headersToSend);
+              driveRes.pipe(passthrough).pipe(res);
 
-        driveRes.on("error", (e) => {
-          log("Erro driveRes (Google Drive upstream): " + e.message);
-          passthrough.destroy(e);
+              driveRes.on("error", (e) => {
+                log("Erro driveRes (Google Drive upstream): " + e.message);
+                passthrough.destroy(e);
+              });
+              passthrough.on("error", (e) => {
+                  log("Erro passthrough (Google Drive): " + e.message);
+                  try { res.end(); } catch (err) {}
+              });
+              driveRes.on("close", () => {
+                  log("Stream Google Drive upstream fechado.");
+              });
+            } else {
+              log(`Erro Google Drive: Status ${driveRes.statusCode}`);
+              try {
+                res.status(500).end(`Erro ao carregar stream do Google Drive: Status ${driveRes.statusCode}`);
+              } catch (err) {}
+            }
+          }
+        );
+        driveReq.on("error", (e) => {
+          log("Erro Google Drive stream (driveReq): " + e.message);
+          try {
+            res.status(500).end("Erro ao carregar stream do Google Drive.");
+          } catch (err) {}
         });
-        passthrough.on("error", (e) => {
-            log("Erro passthrough (Google Drive): " + e.message);
-            try { res.end(); } catch (err) {}
-        });
-        driveRes.on("close", () => {
-            log("Stream Google Drive upstream fechado.");
-        });
-      });
-      driveReq.on("error", (e) => {
-        log("Erro Google Drive stream (driveReq): " + e.message);
-        try {
-          res.status(500).end("Erro ao carregar stream do Google Drive.");
-        } catch (err) {}
-      });
-      driveReq.end();
+        driveReq.end();
+      };
+      makeRequest(currentUrl); // Inicia a requisição
     } else {
       // Proxy normal (http/https)
       const passthrough = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB buffer
